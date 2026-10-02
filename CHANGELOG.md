@@ -3,10 +3,10 @@
 All notable changes to this project will be documented in this file.
 
 This project is a trimmed fork of [pi-web-access](https://github.com/nicobailon/pi-web-access).
-Entries below 0.35.0 describe upstream history; the `[Unreleased]` section describes
+Entries below 0.35.0 describe upstream history; the `[0.1.0]` section describes
 what this fork changed.
 
-## [Unreleased]
+## [0.1.0] - 2026-10-02
 
 ### Added
 
