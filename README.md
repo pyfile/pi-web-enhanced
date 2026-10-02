@@ -1,7 +1,3 @@
-<p>
-  <img src="banner.png" alt="pi-web-enhanced" width="1100">
-</p>
-
 # Pi Web Enhanced
 
 **Web search, content extraction, GitHub cloning, and local PDF extraction for the Pi coding agent — a trimmed, opinionated fork of [pi-web-access](https://github.com/nicobailon/pi-web-access).**
