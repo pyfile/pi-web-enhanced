@@ -15,7 +15,7 @@ const extractModuleUrl = new URL("../extract.ts", import.meta.url).href;
 function runChild(script) {
 	const home = mkdtempSync(join(tmpdir(), "pi-web-access-declared-links-"));
 	writeFileSync(
-		join(home, "web-search.json"),
+		join(home, "web-search-enhanced.json"),
 		JSON.stringify({ fetchRouting: { allowRemoteHostedProviders: true }, tinyfishApiKey: "tinyfish-test-key" }) +
 			"\n",
 		"utf8",

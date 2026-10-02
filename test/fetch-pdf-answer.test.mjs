@@ -10,7 +10,7 @@ const previousEnv = new Map(envNames.map(name => [name, process.env[name]]));
 const originalFetch = globalThis.fetch;
 const root = await mkdtemp(join(tmpdir(), "pi-fetch-pdf-answer-"));
 for (const name of envNames) process.env[name] = root;
-const configPath = join(root, "web-search.json");
+const configPath = join(root, "web-search-enhanced.json");
 const config = { pdf: { provider: "unpdf" }, fetchRouting: { providers: ["http"] } };
 await writeFile(configPath, JSON.stringify(config));
 

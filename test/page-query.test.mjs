@@ -7,7 +7,7 @@ import { join } from "node:path";
 const previousAgentDir = process.env.PI_CODING_AGENT_DIR;
 const agentDir = await mkdtemp(join(tmpdir(), "pi-page-query-"));
 process.env.PI_CODING_AGENT_DIR = agentDir;
-const configPath = join(agentDir, "web-search.json");
+const configPath = join(agentDir, "web-search-enhanced.json");
 after(() => {
 	if (previousAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
 	else process.env.PI_CODING_AGENT_DIR = previousAgentDir;
@@ -216,7 +216,7 @@ test("answerFromPage rejects partial configured answer defaults", async () => {
 			{ question: "Which model?", pageText: "Content", sourceUrl: "https://example.com" },
 			contextFor([]).ctx,
 		),
-		/answerProvider and fetch\.answerModel.*web-search\.json/,
+		/answerProvider and fetch\.answerModel.*web-search-enhanced\.json/,
 	);
 });
 
@@ -231,7 +231,7 @@ test("answerFromPage rejects blank and non-string configured answer defaults", a
 				{ question: "Which model?", pageText: "Content", sourceUrl: "https://example.com" },
 				contextFor([]).ctx,
 			),
-			/fetch\.answer(?:Provider|Model).*web-search\.json.*non-empty string/,
+			/fetch\.answer(?:Provider|Model).*web-search-enhanced\.json.*non-empty string/,
 		);
 	}
 });
@@ -244,7 +244,7 @@ test("answerFromPage rejects an unknown configured answer model", async () => {
 			{ question: "Which model?", pageText: "Content", sourceUrl: "https://example.com" },
 			contextFor([]).ctx,
 		),
-		/Answer model not found: test\/missing-model.*web-search\.json/,
+		/Answer model not found: test\/missing-model.*web-search-enhanced\.json/,
 	);
 });
 

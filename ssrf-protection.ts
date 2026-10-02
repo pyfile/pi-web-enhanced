@@ -151,7 +151,7 @@ interface ValidationOptions {
 	/**
 	 * When true, let the proxy carrying the request resolve hostnames instead of
 	 * performing local DNS lookups: an HTTP(S) proxy from the environment, or the
-	 * `proxy` configured in web-search.json. A different per-call proxy never
+	 * `proxy` configured in web-search-enhanced.json. A different per-call proxy never
 	 * qualifies. Literal IPs and localhost remain blocked, and NO_PROXY hosts still
 	 * use the local SSRF preflight. This does not configure proxy transport.
 	 */
@@ -224,7 +224,7 @@ export async function validateRemoteUrl(rawUrl: string | URL, options: Validatio
 	} catch (err) {
 		const message = err instanceof Error ? err.message : String(err);
 		const hint = !trustProxy && proxy && isConfiguredRemoteDnsProxy(url, proxy)
-			? ". If your configured proxy resolves hostnames, set ssrf.trustEnvProxy to true in web-search.json."
+			? ". If your configured proxy resolves hostnames, set ssrf.trustEnvProxy to true in web-search-enhanced.json."
 			: "";
 		throw new Error(`Failed to resolve ${hostname}: ${message}${hint}`);
 	}
@@ -368,7 +368,7 @@ function assertPublicAddress(address: string, hostname: string, allowRanges: Par
 	if (isInAllowedRange(normalized, ipVersion, allowRanges)) return;
 	if (ipVersion === 4 && isBlockedIPv4(normalized)) {
 		const hint = isFakeIpProxyAddress(normalized)
-			? '. This address is in 198.18.0.0/15, commonly used by TUN/fake-IP proxies. If that matches your setup, configure ssrf.allowRanges with ["198.18.0.0/15"] in web-search.json.'
+			? '. This address is in 198.18.0.0/15, commonly used by TUN/fake-IP proxies. If that matches your setup, configure ssrf.allowRanges with ["198.18.0.0/15"] in web-search-enhanced.json.'
 			: "";
 		throw new Error(`Blocked internal address for ${hostname}: ${normalized}${hint}`);
 	}

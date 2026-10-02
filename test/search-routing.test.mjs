@@ -5,12 +5,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 
-const searchModuleUrl = new URL("../gemini-search.ts", import.meta.url).href;
+const searchModuleUrl = new URL("../search.ts", import.meta.url).href;
 const indexModuleUrl = new URL("../index.ts", import.meta.url).href;
 
 async function createConfig(config) {
 	const home = await mkdtemp(join(tmpdir(), "pi-web-access-search-routing-"));
-	await writeFile(join(home, "web-search.json"), JSON.stringify(config) + "\n", "utf8");
+	await writeFile(join(home, "web-search-enhanced.json"), JSON.stringify(config) + "\n", "utf8");
 	return home;
 }
 

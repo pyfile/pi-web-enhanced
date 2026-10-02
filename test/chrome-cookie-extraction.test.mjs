@@ -121,7 +121,7 @@ function googleLinuxRows(password, one = "one", two = "two") {
 }
 
 function runCookies(home, env, options = "{ requiredCookies: ['__Secure-1PSID', '__Secure-1PSIDTS'] }", platformOverride) {
-	return runCookieScript(env, `const r = await m.getGoogleCookies(${options}); console.log(JSON.stringify({ result: r, diagnostic: m.getLastGoogleCookieDiagnostic(), details: m.getLastGoogleCookieDiagnosticDetails() }));`, platformOverride);
+	return runCookieScript(env, `const r = await m.getBrowserCookiesForHosts({ hosts: GOOGLE_HOSTS, ...${options} }); console.log(JSON.stringify({ result: r, diagnostic: m.getLastBrowserCookieDiagnostic(), details: m.getLastBrowserCookieDiagnosticDetails() }));`, platformOverride);
 }
 
 function runCookieScript(env, body, platformOverride) {
@@ -131,7 +131,7 @@ function runCookieScript(env, body, platformOverride) {
 	const child = spawnSync(process.execPath, ["--experimental-strip-types", "--input-type=module"], {
 		encoding: "utf8",
 		env,
-		input: `${override}const m = await import(${JSON.stringify(moduleUrl)}); ${body}`,
+		input: `${override}const GOOGLE_HOSTS = ['gemini.google.com', 'accounts.google.com', 'www.google.com']; const m = await import(${JSON.stringify(moduleUrl)}); ${body}`,
 	});
 	assert.equal(child.status, 0, child.stderr);
 	return JSON.parse(child.stdout);
@@ -242,9 +242,9 @@ test("KDE caches both Secret Service and KWallet passwords", (t) => {
 	});
 	const result = runCookieScript(env, `
 		const requiredCookies = ['__Secure-1PSID', '__Secure-1PSIDTS'];
-		const first = await m.getGoogleCookies({ profile: 'Profile 1', requiredCookies });
-		const second = await m.getGoogleCookies({ profile: 'Profile 2', requiredCookies });
-		const third = await m.getGoogleCookies({ profile: 'Profile 1', requiredCookies });
+		const first = await m.getBrowserCookiesForHosts({ hosts: GOOGLE_HOSTS, profile: 'Profile 1', requiredCookies });
+		const second = await m.getBrowserCookiesForHosts({ hosts: GOOGLE_HOSTS, profile: 'Profile 2', requiredCookies });
+		const third = await m.getBrowserCookiesForHosts({ hosts: GOOGLE_HOSTS, profile: 'Profile 1', requiredCookies });
 		console.log(JSON.stringify({ first, second, third }));
 	`, "linux");
 	assert.deepEqual(result.first.cookies, { "__Secure-1PSIDTS": "two", "__Secure-1PSID": "one" });
@@ -272,10 +272,10 @@ test("failed KWallet reads retry and successful passwords are cached", (t) => {
 	});
 	const result = runCookieScript(env, `
 		const options = { profile: 'Default', requiredCookies: ['__Secure-1PSID', '__Secure-1PSIDTS'] };
-		const first = await m.getGoogleCookies(options);
-		const firstDiagnostic = m.getLastGoogleCookieDiagnostic();
-		const second = await m.getGoogleCookies(options);
-		const third = await m.getGoogleCookies(options);
+		const first = await m.getBrowserCookiesForHosts({ hosts: GOOGLE_HOSTS, ...options });
+		const firstDiagnostic = m.getLastBrowserCookieDiagnostic();
+		const second = await m.getBrowserCookiesForHosts({ hosts: GOOGLE_HOSTS, ...options });
+		const third = await m.getBrowserCookiesForHosts({ hosts: GOOGLE_HOSTS, ...options });
 		console.log(JSON.stringify({ first, firstDiagnostic, second, third }));
 	`, "linux");
 	const cookies = { "__Secure-1PSIDTS": "two", "__Secure-1PSID": "one" };
@@ -420,7 +420,7 @@ test("required-cookie preflight avoids password invocation for unrelated profile
 	Object.assign(env, writePasswordCommand(bin, countPath, "linux"));
 	const result = runCookies(home, env, undefined, "linux");
 	assert.equal(result.result, null);
-	assert.equal(result.diagnostic.includes("required Gemini cookies"), true);
+	assert.equal(result.diagnostic.includes("required browser cookies"), true);
 	assert.equal(result.details.attempts.some((attempt) => attempt.browser === "Chrome" && attempt.profile === "Profile 1" && attempt.status === "missing-required-cookies"), true);
 	assert.equal(existsSync(countPath), false);
 	assert.equal(existsSync(kwalletCount), false);
@@ -481,7 +481,7 @@ test("browser encryption password is cached within a process", (t) => {
 	const child = spawnSync(process.execPath, ["--experimental-strip-types", "--input-type=module"], {
 		encoding: "utf8",
 		env,
-		input: `const { getGoogleCookies } = await import(${JSON.stringify(moduleUrl)}); await getGoogleCookies({ profile: 'Profile 2', requiredCookies: ['__Secure-1PSID', '__Secure-1PSIDTS'] }); await getGoogleCookies({ profile: 'Profile 2', requiredCookies: ['__Secure-1PSID', '__Secure-1PSIDTS'] });`,
+		input: `const { getBrowserCookiesForHosts } = await import(${JSON.stringify(moduleUrl)}); const hosts = ['gemini.google.com', 'accounts.google.com', 'www.google.com']; await getBrowserCookiesForHosts({ hosts, profile: 'Profile 2', requiredCookies: ['__Secure-1PSID', '__Secure-1PSIDTS'] }); await getBrowserCookiesForHosts({ hosts, profile: 'Profile 2', requiredCookies: ['__Secure-1PSID', '__Secure-1PSIDTS'] });`,
 	});
 	assert.equal(child.status, 0, child.stderr);
 	assert.equal(readFileSync(countPath, "utf8"), "1");
@@ -506,9 +506,9 @@ for (const targetPlatform of ["linux", "darwin"]) {
 			Object.assign(env, writeFailThenSucceedPasswordCommand(bin, countPath, targetPlatform));
 			const result = runCookieScript(env, `
 				const options = { profile: 'Profile 2', requiredCookies: ['__Secure-1PSID', '__Secure-1PSIDTS'] };
-				const first = await m.getGoogleCookies(options);
-				const second = await m.getGoogleCookies(options);
-				const third = await m.getGoogleCookies(options);
+				const first = await m.getBrowserCookiesForHosts({ hosts: GOOGLE_HOSTS, ...options });
+				const second = await m.getBrowserCookiesForHosts({ hosts: GOOGLE_HOSTS, ...options });
+				const third = await m.getBrowserCookiesForHosts({ hosts: GOOGLE_HOSTS, ...options });
 				console.log(JSON.stringify({ first, second, third }));
 			`, targetPlatform);
 			const cookies = { "__Secure-1PSIDTS": "two", "__Secure-1PSID": "one" };

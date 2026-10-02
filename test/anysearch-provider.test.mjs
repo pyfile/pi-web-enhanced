@@ -7,11 +7,11 @@ import { join } from "node:path";
 import { test } from "node:test";
 
 const anysearchModuleUrl = new URL("../anysearch.ts", import.meta.url).href;
-const searchModuleUrl = new URL("../gemini-search.ts", import.meta.url).href;
+const searchModuleUrl = new URL("../search.ts", import.meta.url).href;
 
 async function createHome(config) {
 	const home = await mkdtemp(join(tmpdir(), "pi-web-access-anysearch-"));
-	await writeFile(join(home, "web-search.json"), JSON.stringify(config) + "\n", "utf8");
+	await writeFile(join(home, "web-search-enhanced.json"), JSON.stringify(config) + "\n", "utf8");
 	return home;
 }
 
@@ -192,7 +192,7 @@ test("AnySearch malformed config root fails explicitly", async () => {
 	assert.equal(child.status, 0, child.stderr);
 	const output = JSON.parse(child.stdout.trim());
 	assert.equal(output.ok, false);
-	assert.match(output.error, /Invalid config in .*web-search\.json: expected a JSON object/);
+	assert.match(output.error, /Invalid config in .*web-search-enhanced\.json: expected a JSON object/);
 });
 
 test("AnySearch aborts without falling through", async () => {

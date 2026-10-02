@@ -10,7 +10,7 @@ const extensionPath = new URL("../index.ts", import.meta.url).pathname;
 const root = mkdtempSync(join(tmpdir(), "pi-web-access-sdk-"));
 
 async function withNativeEnv(config, run) {
-	writeFileSync(join(root, "web-search.json"), JSON.stringify(config), "utf8");
+	writeFileSync(join(root, "web-search-enhanced.json"), JSON.stringify(config), "utf8");
 	const previousAgentDir = process.env.PI_CODING_AGENT_DIR;
 	const previousFauxKey = process.env.FAUX_API_KEY;
 	process.env.PI_CODING_AGENT_DIR = root;

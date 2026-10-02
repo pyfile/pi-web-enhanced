@@ -9,7 +9,7 @@ const indexUrl = new URL("../index.ts", import.meta.url).href;
 
 test("web_search bounds batch concurrency and preserves query order", async () => {
 	const home = await mkdtemp(join(tmpdir(), "pi-web-enhanced-concurrency-"));
-	await writeFile(join(home, "web-search.json"), JSON.stringify({
+	await writeFile(join(home, "web-search-enhanced.json"), JSON.stringify({
 		serpapiApiKey: "serpapi-test-key",
 	}) + "\n", "utf8");
 	const childEnv = { ...process.env, PI_CODING_AGENT_DIR: home };

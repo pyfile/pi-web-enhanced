@@ -8,10 +8,10 @@ import { test } from "node:test";
 
 const firecrawlModuleUrl = new URL("../firecrawl.ts", import.meta.url).href;
 const extractModuleUrl = new URL("../extract.ts", import.meta.url).href;
-const searchModuleUrl = new URL("../gemini-search.ts", import.meta.url).href;
+const searchModuleUrl = new URL("../search.ts", import.meta.url).href;
 
 function runChild(script, env = {}) {
-	// Isolate HOME so the developer's real ~/.pi/agent/web-search.json never leaks in.
+	// Isolate HOME so the developer's real ~/.pi/agent/web-search-enhanced.json never leaks in.
 	const isolatedHome = mkdtempSync(join(tmpdir(), "pi-web-enhanced-firecrawl-home-"));
 	const childEnv = { ...process.env, HOME: isolatedHome, USERPROFILE: isolatedHome, PI_CODING_AGENT_DIR: isolatedHome };
 	for (const key of [
@@ -32,7 +32,7 @@ const PUBLIC_LOOKUP = `async () => [{ address: "93.184.216.34", family: 4 }]`;
 
 async function configHome(config) {
 	const home = await mkdtemp(join(tmpdir(), "pi-web-access-firecrawl-"));
-	await writeFile(join(home, "web-search.json"), JSON.stringify(config) + "\n", "utf8");
+	await writeFile(join(home, "web-search-enhanced.json"), JSON.stringify(config) + "\n", "utf8");
 	return home;
 }
 

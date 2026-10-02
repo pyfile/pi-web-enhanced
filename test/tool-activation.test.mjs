@@ -11,7 +11,7 @@ const nativeAdditions = { api: "anthropic-messages", compat: { supportsMidConvoS
 
 function run(config = {}, options = {}) {
 	const root = mkdtempSync(join(tmpdir(), "pi-web-access-activation-"));
-	writeFileSync(join(root, "web-search.json"), JSON.stringify(config), "utf8");
+	writeFileSync(join(root, "web-search-enhanced.json"), JSON.stringify(config), "utf8");
 	const child = spawnSync(process.execPath, ["--input-type=module"], {
 		input: `
 			const { default: initializeExtension } = await import(${JSON.stringify(indexUrl)});

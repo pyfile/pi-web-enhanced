@@ -12,7 +12,7 @@ const LARGE_ANSWER_LENGTH = 116_000;
 function runBoundaryScenario(config = {}) {
 	const dir = mkdtempSync(join(tmpdir(), "pi-web-access-output-boundary-"));
 	try {
-		writeFileSync(join(dir, "web-search.json"), JSON.stringify({ provider: "tavily", ...config }));
+		writeFileSync(join(dir, "web-search-enhanced.json"), JSON.stringify({ provider: "tavily", ...config }));
 		const child = spawnSync(process.execPath, ["--input-type=module"], {
 			input: `
 			const answer = "A".repeat(${LARGE_ANSWER_LENGTH} - 11) + "LATE_ANSWER";
@@ -72,7 +72,7 @@ function runIncludeContentScenario(mode) {
 	const dir = mkdtempSync(join(tmpdir(), "pi-web-access-output-guidance-"));
 	const provider = mode === "inline" ? "anysearch" : "tavily";
 	try {
-		writeFileSync(join(dir, "web-search.json"), JSON.stringify({ provider, maxInlineContentChars: 1_000 }));
+		writeFileSync(join(dir, "web-search-enhanced.json"), JSON.stringify({ provider, maxInlineContentChars: 1_000 }));
 		const child = spawnSync(process.execPath, ["--input-type=module"], {
 			input: `
 			const answer = "A".repeat(${LARGE_ANSWER_LENGTH});

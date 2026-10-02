@@ -57,7 +57,7 @@ function runModule(root, script, extraEnv = {}) {
 test("authFetch profiles resolve named, single true, and host policy", () => {
 	const root = mkdtempSync(join(tmpdir(), "pi-auth-fetch-policy-"));
 	try {
-		writeFileSync(join(root, "web-search.json"), JSON.stringify({ authFetch: { social: ["x.com"], work: { hosts: ["docs.company.com"], cache: "off" } } }) + "\n");
+		writeFileSync(join(root, "web-search-enhanced.json"), JSON.stringify({ authFetch: { social: ["x.com"], work: { hosts: ["docs.company.com"], cache: "off" } } }) + "\n");
 		const output = runModule(root, `
 			const { resolveAuthFetchProfile, assertAuthFetchUrl } = await import(${JSON.stringify(authFetchUrl)});
 			const work = resolveAuthFetchProfile("work");
@@ -83,7 +83,7 @@ test("authFetch profiles resolve named, single true, and host policy", () => {
 test("authFetch true selects the only profile", () => {
 	const root = mkdtempSync(join(tmpdir(), "pi-auth-fetch-single-"));
 	try {
-		writeFileSync(join(root, "web-search.json"), JSON.stringify({ authFetch: { work: ["example.com"] } }) + "\n");
+		writeFileSync(join(root, "web-search-enhanced.json"), JSON.stringify({ authFetch: { work: ["example.com"] } }) + "\n");
 		const output = runModule(root, `
 			const { resolveAuthFetchProfile } = await import(${JSON.stringify(authFetchUrl)});
 			console.log(JSON.stringify(resolveAuthFetchProfile(true)));
@@ -115,7 +115,7 @@ test("authenticated fetch sends only browser-scoped cookies with raw values", (t
 			["childDomain", "child", ".child.app.example.com", "/", null, "20000000000000000", ""],
 			["partitioned", "partitioned", ".app.example.com", "/private", null, "20000000000000000", "https://other.example"],
 		]);
-		writeFileSync(join(root, "web-search.json"), JSON.stringify({ authFetch: { work: ["example.com"] } }) + "\n");
+		writeFileSync(join(root, "web-search-enhanced.json"), JSON.stringify({ authFetch: { work: ["example.com"] } }) + "\n");
 		const output = runModule(root, `
 			const calls = [];
 			globalThis.fetch = async (url, init = {}) => {
@@ -159,7 +159,7 @@ test("authenticated same-origin redirects recompute path-scoped cookies", (t) =>
 			["start", "start", ".example.com", "/start", null, "20000000000000000", ""],
 			["next", "next", ".example.com", "/next", null, "20000000000000000", ""],
 		]);
-		writeFileSync(join(root, "web-search.json"), JSON.stringify({ authFetch: { work: ["example.com"] } }) + "\n");
+		writeFileSync(join(root, "web-search-enhanced.json"), JSON.stringify({ authFetch: { work: ["example.com"] } }) + "\n");
 		const output = runModule(root, `
 			const calls = [];
 			globalThis.fetch = async (url, init = {}) => {
@@ -191,7 +191,7 @@ test("authenticated same-origin redirects recompute path-scoped cookies", (t) =>
 test("authenticated fetch failure does not fall through to hosted providers", () => {
 	const root = mkdtempSync(join(tmpdir(), "pi-auth-fetch-no-fallback-"));
 	try {
-		writeFileSync(join(root, "web-search.json"), JSON.stringify({ authFetch: { work: ["example.com"] }, fetchRouting: { providers: ["http", "jina"], allowRemoteHostedProviders: true } }) + "\n");
+		writeFileSync(join(root, "web-search-enhanced.json"), JSON.stringify({ authFetch: { work: ["example.com"] }, fetchRouting: { providers: ["http", "jina"], allowRemoteHostedProviders: true } }) + "\n");
 		const output = runModule(root, `
 			const calls = [];
 			globalThis.fetch = async (url) => { calls.push(String(url)); return new Response("hosted", { status: 200 }); };
@@ -214,7 +214,7 @@ test("authenticated Cloudflare challenge stays direct-only", (t) => {
 	try {
 		writePasswordCommand(bin);
 		createCookieFixture(root, [["sid", "session", ".example.com", "/", null, "20000000000000000", ""]]);
-		writeFileSync(join(root, "web-search.json"), JSON.stringify({ authFetch: { work: ["example.com"] }, fetchRouting: { providers: ["http", "jina"], allowRemoteHostedProviders: true } }) + "\n");
+		writeFileSync(join(root, "web-search-enhanced.json"), JSON.stringify({ authFetch: { work: ["example.com"] }, fetchRouting: { providers: ["http", "jina"], allowRemoteHostedProviders: true } }) + "\n");
 		const output = runModule(root, `
 			const calls = [];
 			globalThis.fetch = async (url) => {

@@ -12,7 +12,7 @@ const indexUrl = new URL("../index.ts", import.meta.url).href;
 function runSearch(config, params, toolName = "web_search", { dropEnv = [] } = {}) {
 	const dir = mkdtempSync(join(tmpdir(), "pi-web-enhanced-search-tools-"));
 	try {
-		writeFileSync(join(dir, "web-search.json"), JSON.stringify(config) + "\n", "utf8");
+		writeFileSync(join(dir, "web-search-enhanced.json"), JSON.stringify(config) + "\n", "utf8");
 		const child = spawnSync(process.execPath, ["--input-type=module"], {
 			input: `
 			const calls = [];
@@ -33,6 +33,9 @@ function runSearch(config, params, toolName = "web_search", { dropEnv = [] } = {
 				}
 				if (target.startsWith("https://serpapi.com/search.json")) {
 					return new Response(JSON.stringify({ organic_results: [{ title: "SerpApi", link: "https://example.com/serpapi", snippet: "serpapi" }] }), { status: 200 });
+				}
+				if (target === "https://api.querit.ai/v1/search") {
+					return new Response(JSON.stringify({ error_code: 200, results: { result: [{ title: "Querit", url: "https://example.com/querit", snippet: "querit" }] } }), { status: 200 });
 				}
 				throw new Error("Unexpected fetch: " + target);
 			};
@@ -78,6 +81,7 @@ function buildEnv(dir, dropEnv) {
 		TAVILY_API_KEY: "tavily-test-key",
 		TINYFISH_API_KEY: "tinyfish-test-key",
 		SERPAPI_KEY: "serpapi-test-key",
+		QUERIT_API_KEY: "querit-test-key",
 	};
 	for (const key of dropEnv) delete env[key];
 	return env;
@@ -89,6 +93,7 @@ const searchHosts = (urls) => urls.map((url) => {
 	if (url === "https://api.fetch.tinyfish.ai") return "tinyfish";
 	if (url.startsWith("https://api.search.tinyfish.ai")) return "tinyfish";
 	if (url.startsWith("https://serpapi.com/search.json")) return "serpapi";
+	if (url === "https://api.querit.ai/v1/search") return "querit";
 	return url;
 });
 
@@ -132,6 +137,29 @@ test("web_search_enhanced queries every provider in the configured list", () => 
 	assert.match(output.text, /## Brave/);
 	assert.match(output.text, /## Tavily/);
 	assert.match(output.text, /## TinyFish/);
+});
+
+test("web_search in balanced mode can draw the querit search provider", () => {
+	// Only querit has a key here (brave's is dropped), so the draw must land on it.
+	const output = runSearch({
+		provider: [["brave", 5], ["querit", 1]],
+	}, { query: "balanced querit" }, "web_search", { dropEnv: ["BRAVE_API_KEY"] });
+
+	assert.deepEqual(searchHosts(output.calls), ["querit"]);
+	assert.deepEqual(output.queryProviders[0].providers, ["querit"]);
+});
+
+test("web_search_enhanced queries querit alongside the other configured providers", () => {
+	const output = runSearch({
+		provider: [["brave", 1], ["tavily", 1], ["querit", 1]],
+	}, { query: "enhanced querit" }, "web_search_enhanced");
+
+	assert.deepEqual(searchHosts(output.calls).sort(), ["brave", "querit", "tavily"]);
+	assert.deepEqual(
+		output.queryProviders[0].providers.slice().sort(),
+		["brave", "querit", "tavily"],
+	);
+	assert.match(output.text, /## Querit/);
 });
 
 test("an explicit provider param overrides the weighted selection", () => {

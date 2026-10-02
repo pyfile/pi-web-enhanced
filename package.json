@@ -1,7 +1,7 @@
 {
   "name": "pi-web-enhanced",
-  "version": "0.35.0",
-  "description": "Web search, URL fetching, GitHub repo cloning, and local PDF extraction for Pi coding agent. Supports Exa, Tavily, AnySearch, TinyFish, SerpApi, Firecrawl, Brave, and DuckDuckGo, with weighted-provider balanced search and all-provider enhanced search.",
+  "version": "0.1.0",
+  "description": "Web search, URL fetching, GitHub repo cloning, and local PDF extraction for Pi coding agent. Supports Exa, Tavily, AnySearch, TinyFish, SerpApi, Firecrawl, Brave, Querit, and DuckDuckGo, with weighted-provider balanced search and all-provider enhanced search.",
   "type": "module",
   "scripts": {
     "test": "node --import ./test/isolate-env.mjs --test",
@@ -25,20 +25,21 @@
     "serpapi",
     "firecrawl",
     "brave",
+    "querit",
     "duckduckgo",
     "fetch",
     "scraping"
   ],
-  "author": "Nico Bailon",
+  "author": "HqPeng",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/nicobailon/pi-web-access.git"
+    "url": "git+https://github.com/pyfile/pi-web-enhanced.git"
   },
   "bugs": {
-    "url": "https://github.com/nicobailon/pi-web-access/issues"
+    "url": "https://github.com/pyfile/pi-web-enhanced/issues"
   },
-  "homepage": "https://github.com/nicobailon/pi-web-access#readme",
+  "homepage": "https://github.com/pyfile/pi-web-enhanced#readme",
   "files": [
     "dist",
     "*.ts",

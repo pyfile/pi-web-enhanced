@@ -19,7 +19,7 @@ function runRegistration(config) {
 
 function runRegistrationWithConfig(configText) {
 	const root = mkdtempSync(join(tmpdir(), "pi-web-access-tool-names-"));
-	writeFileSync(join(root, "web-search.json"), configText, "utf8");
+	writeFileSync(join(root, "web-search-enhanced.json"), configText, "utf8");
 	return spawnSync(process.execPath, ["--input-type=module"], {
 		input: `
 			const { default: initializeExtension } = await import(${JSON.stringify(indexUrl)});
@@ -75,9 +75,9 @@ test("malformed config falls back during extension registration", () => {
 
 test("default public execution tool definitions retain their compatibility hashes", () => {
 	const expected = {
-		web_search: "1ce9b937038f11b06e42c440e978a851025e980bbca6c6d84da8fdcbb414536d",
-		web_search_enhanced: "f63ae950ddf962990a97316245ef4775c9c395668421c7f42165532b195bbfba",
-		source_check: "ee757cebc04487efef94a5bbfeb4d663fb8be94599b9bc053c1491fa26d74592",
+		web_search: "50a04cecff1a1e8dfa01089f15201f36eb5b9038fdd7b050780e42d697e5d267",
+		web_search_enhanced: "c3d56c28ca53f47214dd0c680ab732bbb183f6c94c5a37276205077d86012b37",
+		source_check: "cb2761341e3c443bb792afe8e828dbb49ebc49ca97da0728ee4b822cb17bbbaa",
 		fetch_content: "9117eca8fd18398506d3f708f4edc915f2f63bdd6a7e889df107311b840ec31d",
 		get_search_content: "cff5c78cc6753512186b1b00d5188307ecf79ec843f0bae97e5be1f52e0f6225",
 	};
@@ -203,5 +203,5 @@ test("README documents registration gates and toolNames", () => {
 	assert.match(readmeSrc, /Pi restart is required for tool and command registration changes/);
 	assert.match(readmeSrc, /`toolNames` can opt into alternate public tool names/);
 	assert.match(readmeSrc, /web_search_enhanced/);
-	assert.match(readmeSrc, /exp\(wᵢ\) \/ Σ exp\(wⱼ\)/);
+	assert.match(readmeSrc, /wᵢ \/ Σ wⱼ/);
 });

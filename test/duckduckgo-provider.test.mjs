@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 
 const duckDuckGoModuleUrl = new URL("../duckduckgo.ts", import.meta.url).href;
-const searchModuleUrl = new URL("../gemini-search.ts", import.meta.url).href;
+const searchModuleUrl = new URL("../search.ts", import.meta.url).href;
 
 function runChild(script, env = {}) {
 	const childEnv = { ...process.env };
@@ -22,7 +22,7 @@ function runChild(script, env = {}) {
 
 async function createConfig(config) {
 	const home = await mkdtemp(join(tmpdir(), "pi-web-access-duckduckgo-"));
-	await writeFile(join(home, "web-search.json"), JSON.stringify(config) + "\n", "utf8");
+	await writeFile(join(home, "web-search-enhanced.json"), JSON.stringify(config) + "\n", "utf8");
 	return home;
 }
 

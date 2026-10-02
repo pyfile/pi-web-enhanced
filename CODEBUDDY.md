@@ -40,25 +40,33 @@ The two search tools come from one local factory, `createWebSearchTool(mode)` (`
 
 ### Search providers
 
-Eight providers, all sharing one contract. Canonical types live in `search-types.ts` (`SearchResult`, `SearchResponse`, `SearchOptions`) — do not redefine them.
+Nine providers, all sharing one contract. Canonical types live in `search-types.ts` (`SearchResult`, `SearchResponse`, `SearchOptions`) — do not redefine them.
 
 - `export function isXAvailable(): boolean`
 - `export async function searchWithX(query: string, options: SearchOptions): Promise<SearchResponse>`
 
-`gemini-search.ts` is the dispatcher despite its name: it owns `RESOLVED_SEARCH_PROVIDERS`, `ALL_SEARCH_PROVIDERS`, `providerLabel`, `SearchProviderError` + `SearchProviderErrorKind`, the `search()` entry point, and the automatic fallback chain.
+`search.ts` is the dispatcher: it owns `RESOLVED_SEARCH_PROVIDERS`, `ALL_SEARCH_PROVIDERS`, `providerLabel`, `SearchProviderError` + `SearchProviderErrorKind`, the `search()` entry point, and the automatic fallback chain.
 
-- `RESOLVED_SEARCH_PROVIDERS` = exa, tavily, anysearch, tinyfish, serpapi, firecrawl, brave, duckduckgo.
-- `ALL_SEARCH_PROVIDERS` = exa, brave, tinyfish, tavily, firecrawl. AnySearch, SerpApi, and DuckDuckGo are **explicit-only**: they are absent from `ALL_SEARCH_PROVIDERS` and from the automatic chain, so `auto` and `all` never reach them. An explicit id, an explicit array, or `searchRouting.providers` can still select them.
+- `RESOLVED_SEARCH_PROVIDERS` = exa, tavily, anysearch, tinyfish, serpapi, firecrawl, brave, duckduckgo, querit.
+- `ALL_SEARCH_PROVIDERS` = exa, brave, tinyfish, tavily, firecrawl. AnySearch, SerpApi, DuckDuckGo, and Querit are **explicit-only**: they are absent from `ALL_SEARCH_PROVIDERS` and from the automatic chain, so `auto` and `all` never reach them. An explicit id, an explicit array, or `searchRouting.providers` can still select them.
 - Adding a provider means: a new `x.ts` with the two exports, an entry in `RESOLVED_SEARCH_PROVIDERS`, a branch in `searchWithResolvedProvider` and `isResolvedProviderAvailable`, a label in `providerLabel`, an import in `index.ts`, and a test.
 
 ### Weighted provider selection
 
 `search-provider-weights.ts` implements balanced mode:
 
-- `parseProviderWeights(value, allowedProviders, label)` returns `null` for anything that is not the `[[name, integerWeight], ...]` tuple form, so the caller falls back to plain string/array selection. It throws on malformed tuples, unknown providers, duplicates, and non-integer weights, and clamps weights to ±50 so `Math.exp` cannot overflow.
-- `sampleWeightedProvider(weights, isAvailable, random = Math.random)` filters to providers with usable credentials **first**, then samples with `exp(wᵢ − maxW) / Σ exp(wⱼ − maxW)`. Pass a seeded `random` in tests for deterministic draws.
-- `gemini-search.ts` caches the parsed weight table but **never** the sampled provider — sampling happens once per call inside `search()`. `cachedSearchConfig` is memoized for the process lifetime, so tests must set `PI_CODING_AGENT_DIR` before importing.
+- `parseProviderWeights(value, allowedProviders, label)` returns `null` for anything that is not the `[[name, positiveIntegerWeight], ...]` tuple form, so the caller falls back to plain string/array selection. It throws on malformed tuples, unknown providers, duplicates, and weights that are not positive integers (zero, negative, and fractional are all rejected); weights are not clamped.
+- `sampleWeightedProvider(weights, isAvailable, random = Math.random)` filters to providers with usable credentials **first**, then samples with `wᵢ / Σ wⱼ`, typically reading each weight as a provider's request budget over a common window. Pass a seeded `random` in tests for deterministic draws.
+- `search.ts` caches the parsed weight table but **never** the sampled provider — sampling happens once per call inside `search()`. `cachedSearchConfig` is memoized for the process lifetime, so tests must set `PI_CODING_AGENT_DIR` before importing.
 - `selectionMode` defaults to `"balanced"`, so any caller that omits it (for example `source_check`) gets one provider per query, not a fan-out.
+
+### Balanced retry and routing fallback
+
+`search()` runs the balanced resolution — weighted sample / plain string / explicit array / `all` / the automatic chain — in a retry loop of `config.retry` **total** attempts (default `1`, so an unconfigured `retry` preserves single-attempt behavior). Each attempt re-resolves the selection, so a weighted retry re-samples and can land on a different provider. Aborts and `CredentialResolutionError` propagate immediately instead of retrying.
+
+When every attempt fails **and** `searchRouting` is configured, `searchWithConfiguredRouting` runs as the last-resort fallback; if it also fails, the two error sets are combined into one `Balanced search failed after N attempts: … searchRouting fallback failed: …` error. With a single failed attempt and no routing, the original error object is rethrown unchanged, which keeps upstream error-message tests valid.
+
+Original behavior is preserved for the one case where routing was already the primary: no `provider`/`searchProvider` configured + `searchRouting` set → the routing rotation runs directly (no retry wrapper). `web_search_enhanced` (`selectionMode: "enhanced"`) is a single fan-out and is not retried.
 
 ### Fetch / extract
 
@@ -70,7 +78,7 @@ Three modes flow through `fetch-params.ts`: `readable`, `raw` (exact textual bod
 
 ### Config
 
-`web-search.json` under the Pi agent dir. `getWebSearchConfigDir()` (`utils.ts`) resolves `PI_CODING_AGENT_DIR` → `$XDG_CONFIG_HOME/pi` (only if the file already exists) → legacy `~/.pi` → `~/.pi/agent`, and memoizes the result for the process lifetime.
+`web-search-enhanced.json` under the Pi agent dir — deliberately a different filename than upstream pi-web-access's `web-search.json`, so the two extensions can coexist. The name is centralized in `utils.ts` (`CONFIG_FILE_NAME`). `getWebSearchConfigDir()` (`utils.ts`) resolves `PI_CODING_AGENT_DIR` → `$XDG_CONFIG_HOME/pi` (only if the file already exists) → legacy `~/.pi` → `~/.pi/agent`, and memoizes the result for the process lifetime.
 
 Precedence worth remembering: an environment variable beats a literal config value for credentials (`credential-source.ts`); per-call `proxy` beats config `proxy`; `NO_PROXY`, localhost, and `127.0.0.1` are never proxied (proxying shells out to `curl`, not undici).
 
@@ -91,7 +99,7 @@ Tests are `.mjs` files in `test/` run by Node's built-in runner, importing `.ts`
 1. **In-process** for pure modules: `import { resolveCredential } from "../credential-source.ts"`.
 2. **Subprocess** for anything that captures config at import time or needs a real extension instance: `spawnSync(process.execPath, ["--input-type=module"], { input: script, env: childEnv })` with `await import(...)` inside and JSON on stdout.
 
-`test/isolate-env.mjs` runs before every test file and (a) deletes `PI_WEB_ACCESS_CACHE_ROOT`, and (b) pins `PI_CODING_AGENT_DIR` to a fresh empty temp dir. (b) matters: without it, an in-process test reads the developer's real `~/.pi/agent/web-search.json`, and any provider named there changes what the shared config path resolves to. Tests that need a specific config must spawn a child with their own `PI_CODING_AGENT_DIR`, `HOME`, and `USERPROFILE` — several upstream tests forgot `HOME`, so add all three.
+`test/isolate-env.mjs` runs before every test file and (a) deletes `PI_WEB_ACCESS_CACHE_ROOT`, and (b) pins `PI_CODING_AGENT_DIR` to a fresh empty temp dir. (b) matters: without it, an in-process test reads the developer's real `~/.pi/agent/web-search-enhanced.json`, and any provider named there changes what the shared config path resolves to. Tests that need a specific config must spawn a child with their own `PI_CODING_AGENT_DIR`, `HOME`, and `USERPROFILE` — several upstream tests forgot `HOME`, so add all three.
 
 Mocking: prefer the module's injectable seams (`runCommand`, `lookup`, `now`/`sleep`); otherwise stub `globalThis.fetch` inside the child.
 
@@ -100,7 +108,7 @@ Mocking: prefer the module's injectable seams (`runCommand`, `lookup`, `now`/`sl
 ## Invariants that are easy to break
 
 - Config path and `feature-config.ts` are computed **at import time**; set env vars before importing.
-- Memoized singletons with no invalidation hook: the config dir (`utils.ts`), `cachedSearchConfig` (`gemini-search.ts`), `extractModulePromise` (`index.ts`).
+- Memoized singletons with no invalidation hook: the config dir (`utils.ts`), `cachedSearchConfig` (`search.ts`), `extractModulePromise` (`index.ts`).
 - Tool registration is a snapshot taken at init; later config edits only affect per-call `loadConfig()` paths. Pi must be restarted for registration changes.
 - `isToolEnabled` deliberately makes `tools.webSearch.enabled` gate `web_search_enhanced` too, unless `tools.webSearchEnhanced` has its own entry. Changing that silently re-registers a disabled capability.
 - `web_enable` is a reserved tool name; `resolveToolNames` rejects duplicates and that name.

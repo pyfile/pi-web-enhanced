@@ -10,7 +10,7 @@ const indexUrl = new URL("../index.ts", import.meta.url).href;
 function runScenario(config, body) {
 	const agentDir = mkdtempSync(join(tmpdir(), "pi-web-access-fetch-modes-"));
 	if (config !== undefined) {
-		writeFileSync(join(agentDir, "web-search.json"), JSON.stringify(config) + "\n", "utf8");
+		writeFileSync(join(agentDir, "web-search-enhanced.json"), JSON.stringify(config) + "\n", "utf8");
 	}
 	return spawnSync(process.execPath, ["--input-type=module"], {
 		input: `

@@ -36,7 +36,7 @@ function runChild(script, env) {
 
 async function setupHome() {
 	const home = await mkdtemp(join(tmpdir(), "pi-web-access-317-"));
-	await writeFile(join(home, "web-search.json"), JSON.stringify({ serpapiApiKey: "serpapi-test-key" }) + "\n", "utf8");
+	await writeFile(join(home, "web-search-enhanced.json"), JSON.stringify({ serpapiApiKey: "serpapi-test-key" }) + "\n", "utf8");
 	return home;
 }
 

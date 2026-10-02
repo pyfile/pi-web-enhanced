@@ -6,11 +6,11 @@ import { join } from "node:path";
 import { test } from "node:test";
 
 const indexUrl = new URL("../index.ts", import.meta.url).href;
-const searchUrl = new URL("../gemini-search.ts", import.meta.url).href;
+const searchUrl = new URL("../search.ts", import.meta.url).href;
 
 function homeWith(config) {
   const home = mkdtempSync(join(tmpdir(), "pi-web-enhanced-allowed-"));
-  if (config !== undefined) writeFileSync(join(home, "web-search.json"), JSON.stringify(config) + "\n");
+  if (config !== undefined) writeFileSync(join(home, "web-search-enhanced.json"), JSON.stringify(config) + "\n");
   return home;
 }
 
@@ -143,13 +143,14 @@ test("an absent config file preserves registration and search behavior", () => {
     const providers = tools.find(t => t.name === "web_search").parameters.properties.provider.anyOf[0].enum;
     globalThis.fetch = async () => ${braveResponse};
     const response = await (await import(${JSON.stringify(searchUrl)})).search("q", { provider: "brave" });
-    console.log(JSON.stringify({ tools: tools.map(t => t.name), commands, hasSerpApi: providers.includes("serpapi"), provider: response.provider }));
+    console.log(JSON.stringify({ tools: tools.map(t => t.name), commands, hasSerpApi: providers.includes("serpapi"), hasQuerit: providers.includes("querit"), provider: response.provider }));
   `, { BRAVE_API_KEY: "b" });
   assert.equal(result.status, 0, result.stderr);
   assert.deepEqual(JSON.parse(result.stdout), {
     tools: ["web_search", "web_search_enhanced", "source_check", "fetch_content", "get_search_content"],
     commands: ["search"],
     hasSerpApi: true,
+    hasQuerit: true,
     provider: "brave",
   });
 });

@@ -63,7 +63,7 @@ async function makeConfigDir(prefix) {
 	const root = await mkdtemp(join(tmpdir(), prefix));
 	const agentDir = join(root, "agent-dir");
 	await mkdir(agentDir, { recursive: true });
-	return { root, agentDir, configPath: join(agentDir, "web-search.json") };
+	return { root, agentDir, configPath: join(agentDir, "web-search-enhanced.json") };
 }
 
 function envFor(root, agentDir) {
@@ -180,7 +180,7 @@ test("loadSsrfAllowRanges returns trimmed, non-empty CIDR strings for a valid ar
 
 test("loadSsrfAllowRanges returns [] when the config file is missing", async () => {
 	const { root, agentDir } = await makeConfigDir("pi-ssrf-missing-");
-	// Intentionally do not write web-search.json.
+	// Intentionally do not write web-search-enhanced.json.
 	const result = runLoad(envFor(root, agentDir));
 	assert.equal(result.ok, true, result.error);
 	assert.deepEqual(result.ranges, []);
@@ -201,5 +201,5 @@ test("loadSsrfAllowRanges reports malformed config JSON", async () => {
 
 	const result = runLoad(envFor(root, agentDir));
 	assert.equal(result.ok, false);
-	assert.match(result.error, /Failed to parse .*web-search\.json/);
+	assert.match(result.error, /Failed to parse .*web-search-enhanced\.json/);
 });

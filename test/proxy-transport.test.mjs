@@ -197,7 +197,7 @@ test("proxy curl redirects strip caller headers across origins", async (t) => {
 
 test("configured proxy is scoped to web operations while empty string forces direct access", async (t) => {
 	const dir = await mkdtemp(join(tmpdir(), "pi-proxy-config-test-"));
-	await writeFile(join(dir, "web-search.json"), JSON.stringify({ proxy: "http://global-proxy.example:8080" }));
+	await writeFile(join(dir, "web-search-enhanced.json"), JSON.stringify({ proxy: "http://global-proxy.example:8080" }));
 	t.after(async () => {
 		await rm(dir, { recursive: true, force: true });
 	});
@@ -244,7 +244,7 @@ test("omitted proxy preserves trusted environment proxy routing when no proxy is
 
 test("fetch_content lets a trusted configured proxy resolve hostnames that local DNS cannot", async (t) => {
 	const dir = await mkdtemp(join(tmpdir(), "pi-proxy-trusted-dns-test-"));
-	await writeFile(join(dir, "web-search.json"), JSON.stringify({ proxy: "http://configured-proxy.example:3128", ssrf: { trustEnvProxy: true } }));
+	await writeFile(join(dir, "web-search-enhanced.json"), JSON.stringify({ proxy: "http://configured-proxy.example:3128", ssrf: { trustEnvProxy: true } }));
 	t.after(async () => {
 		await rm(dir, { recursive: true, force: true });
 	});
@@ -278,7 +278,7 @@ test("fetch_content lets a trusted configured proxy resolve hostnames that local
 
 test("configured proxy DNS trust never extends to a different per-call proxy", async (t) => {
 	const dir = await mkdtemp(join(tmpdir(), "pi-proxy-trust-scope-test-"));
-	await writeFile(join(dir, "web-search.json"), JSON.stringify({ proxy: "http://configured-proxy.example:3128" }));
+	await writeFile(join(dir, "web-search-enhanced.json"), JSON.stringify({ proxy: "http://configured-proxy.example:3128" }));
 	t.after(async () => {
 		await rm(dir, { recursive: true, force: true });
 	});
@@ -306,7 +306,7 @@ test("configured proxy DNS trust never extends to a different per-call proxy", a
 
 test("invalid configured proxy fails closed instead of direct fetching", async (t) => {
 	const dir = await mkdtemp(join(tmpdir(), "pi-proxy-invalid-config-test-"));
-	await writeFile(join(dir, "web-search.json"), JSON.stringify({ proxy: "ftp://proxy.example:21" }));
+	await writeFile(join(dir, "web-search-enhanced.json"), JSON.stringify({ proxy: "ftp://proxy.example:21" }));
 	t.after(async () => {
 		await rm(dir, { recursive: true, force: true });
 	});
@@ -324,7 +324,7 @@ test("invalid configured proxy fails closed instead of direct fetching", async (
 
 test("invalid configured proxy reaches background fetch rejection handling", async (t) => {
 	const dir = await mkdtemp(join(tmpdir(), "pi-proxy-background-config-test-"));
-	const configPath = join(dir, "web-search.json");
+	const configPath = join(dir, "web-search-enhanced.json");
 	await writeFile(configPath, JSON.stringify({ provider: "tavily", tavilyApiKey: "proxy-background-test-key" }));
 	t.after(async () => {
 		await rm(dir, { recursive: true, force: true });

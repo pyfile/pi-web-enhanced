@@ -6,7 +6,7 @@
 
 **Web search, content extraction, GitHub cloning, and local PDF extraction for the Pi coding agent — a trimmed, opinionated fork of [pi-web-access](https://github.com/nicobailon/pi-web-access).**
 
-Eight search providers (Exa, Tavily, AnySearch, TinyFish, SerpApi, Firecrawl, Brave, DuckDuckGo), two search tools (`web_search` for weighted balanced search, `web_search_enhanced` for all-provider search), four fetch providers, and local-only PDF parsing. No curator UI, no generated summaries, no video pipeline, no hosted PDF engines.
+Nine search providers (Exa, Tavily, AnySearch, TinyFish, SerpApi, Firecrawl, Brave, DuckDuckGo, Querit), two search tools (`web_search` for weighted balanced search, `web_search_enhanced` for all-provider search), four fetch providers, and local-only PDF parsing. No curator UI, no generated summaries, no video pipeline, no hosted PDF engines.
 
 ## Install
 
@@ -16,7 +16,7 @@ pi install npm:pi-web-enhanced
 
 Requires Pi v0.37.3+.
 
-Works immediately with no API keys: Exa runs through its zero-config MCP endpoint, and DuckDuckGo needs no key at all. Add keys to `~/.pi/agent/web-search.json` for more providers:
+Works immediately with no API keys: Exa runs through its zero-config MCP endpoint, and DuckDuckGo needs no key at all. Add keys to `~/.pi/agent/web-search-enhanced.json` for more providers:
 
 ```json
 {
@@ -34,23 +34,25 @@ Works immediately with no API keys: Exa runs through its zero-config MCP endpoin
 
 ### web_search — balanced
 
-The default search tool. When `provider` in `web-search.json` is a **weighted list**, every call samples exactly one provider from it:
+The default search tool. When `provider` in `web-search-enhanced.json` is a **weighted list**, every call samples exactly one provider from it:
 
 ```json
 {
-  "provider": [["exa", 3], ["brave", 2], ["tavily", 1]],
+  "provider": [["exa", 60], ["brave", 30], ["tavily", 10]],
   "exaApiKey": "exa-...",
   "braveApiKey": "BSA_...",
   "tavilyApiKey": "tvly-..."
 }
 ```
 
-The probability of picking provider *i* is `exp(wᵢ) / Σ exp(wⱼ)`. Rules:
+The probability of picking provider *i* is `wᵢ / Σ wⱼ`. Weights are usually a provider's request budget over a common window (requests per minute/hour/day/month), so the mix tracks each provider's allowance. Rules:
 
-- Weights must be integers; values beyond ±50 are clamped so the exponential cannot overflow.
-- Providers in the list without usable credentials are dropped **before** sampling, so the remaining weights keep their relative shape.
-- Duplicate entries, unknown provider names, and non-integer weights are rejected with a message naming the config file.
+- Each weight must be a **positive integer**; zero, negative, and fractional weights are rejected.
+- Providers in the list without usable credentials are dropped **before** sampling, so the remaining weights keep their relative proportions.
+- Duplicate entries, unknown provider names, and non-positive or non-integer weights are rejected with a message naming the config file.
 - If none of the listed providers has credentials, the call falls back to the automatic provider chain instead of failing.
+
+**Retries and routing fallback.** Set `"retry": N` to allow up to `N` total attempts per balanced call (default `1`, i.e. a single attempt). Each retry re-samples the weighted list, so a retry can land on a different provider. If every attempt fails and `searchRouting` is configured, the call then runs the routing rotation (`searchRouting.providers` in order, honouring `fallbackOn`) as a last resort.
 
 A plain string still works and pins one provider: `"provider": "brave"`. Omitting `provider` (or setting it to `"auto"`) uses the automatic chain: Exa → Brave → Tavily → Firecrawl → TinyFish.
 
@@ -73,7 +75,7 @@ Queries **every provider in the configured list simultaneously** and merges the 
 web_search_enhanced({ query: "...", provider: [["exa", 1], ["brave", 1], ["tavily", 1]] })
 ```
 
-Without a weighted list it uses the eligible automatic providers. AnySearch, SerpApi, and DuckDuckGo are explicit-only: they are never part of the automatic chain, but naming them in the list (or in an explicit `provider` array) opts them in.
+Without a weighted list it uses the eligible automatic providers. AnySearch, SerpApi, DuckDuckGo, and Querit are explicit-only: they are never part of the automatic chain, but naming them in the list (or in an explicit `provider` array) opts them in.
 
 ### fetch_content
 
@@ -148,11 +150,11 @@ Toggle with **Ctrl+Shift+W** to see live request/response activity:
 
 ## Configuration
 
-Config defaults to `~/.pi/agent/web-search.json` when neither `PI_CODING_AGENT_DIR` nor `XDG_CONFIG_HOME` is set. `PI_CODING_AGENT_DIR` takes precedence when set. Every field is optional.
+Config defaults to `~/.pi/agent/web-search-enhanced.json` when neither `PI_CODING_AGENT_DIR` nor `XDG_CONFIG_HOME` is set. `PI_CODING_AGENT_DIR` takes precedence when set. Every field is optional.
 
 ```json
 {
-  "provider": [["exa", 3], ["brave", 2], ["tavily", 1]],
+  "provider": [["exa", 60], ["brave", 30], ["tavily", 10]],
   "exaApiKey": "exa-...",
   "braveApiKey": "BSA_...",
   "tavilyApiKey": "tvly-...",
@@ -163,6 +165,7 @@ Config defaults to `~/.pi/agent/web-search.json` when neither `PI_CODING_AGENT_D
   "firecrawlApiKey": "fc-...",
   "queritApiKey": "...",
   "searchProvider": "auto",
+  "retry": 3,
   "searchRouting": {
     "providers": ["exa", "brave"],
     "fallbackOn": ["transient", "quota", "network", "invalid-response", "unsupported"]
@@ -185,6 +188,8 @@ Config defaults to `~/.pi/agent/web-search.json` when neither `PI_CODING_AGENT_D
 Credential values may be a literal, `$ENV_VAR` / `${ENV_VAR}` to read an environment variable, or `!command` to run a command (5 s timeout, 16 KB cap). An environment variable always wins over a literal config value.
 
 `webSearch.allowedProviders` restricts which providers may be selected at all — by the weighted list, by `searchProvider`, or by `searchRouting.providers`. A configured value that names a provider outside the allowlist fails loudly. Setting `tools.webSearch.enabled` to `false` disables both search tools; `tools.webSearchEnhanced.enabled` overrides that for the enhanced tool alone.
+
+`searchRouting` is a provider rotation used in two places: as the primary resolution when no `provider`/`searchProvider` is configured, and as the last-resort fallback for balanced search once `retry` attempts are exhausted. Providers are tried in order; a failure continues to the next provider only when its classified kind is listed in `fallbackOn` (`transient`, `quota`, `network`, `invalid-response`, `unsupported`), otherwise it fails closed. `searchRouting.useCurrentModel` is accepted for compatibility.
 
 `toolActivation` picks how tools become available:
 
@@ -221,7 +226,7 @@ Report suspected vulnerabilities through GitHub private vulnerability reporting 
 - No curator UI and no generated summaries: `web_search` returns raw results only.
 - YouTube, local video, and frame extraction are not supported.
 - PDFs are text-extracted only (no OCR).
-- AnySearch, SerpApi, and DuckDuckGo are explicit-only and never join the automatic chain.
+- AnySearch, SerpApi, DuckDuckGo, and Querit are explicit-only and never join the automatic chain.
 - GitHub branch names with slashes may misresolve file paths; the clone still works.
 - GitHub wiki, discussion, and other non-code pages fall through to normal web extraction.
 - Firecrawl, TinyFish, and Querit extraction each carry their own timeout budget; `fetch.timeout` covers only the direct HTTP attempt.
@@ -231,10 +236,10 @@ Report suspected vulnerabilities through GitHub private vulnerability reporting 
 | File | Purpose |
 | ------ | --------- |
 | `index.ts` | Extension entry: tool definitions, commands, widget |
-| `gemini-search.ts` | Provider registry, routing, fallback chain, error classification |
-| `search-provider-weights.ts` | Weighted-list parsing and softmax provider sampling |
+| `search.ts` | Provider registry, routing, fallback chain, error classification |
+| `search-provider-weights.ts` | Weighted-list parsing and linear weighted provider sampling |
 | `search-types.ts` | Shared `SearchResult` / `SearchResponse` / `SearchOptions` types |
-| `exa.ts`, `tavily.ts`, `brave.ts`, `tinyfish.ts`, `serpapi.ts`, `firecrawl.ts`, `anysearch.ts`, `duckduckgo.ts` | Search providers |
+| `exa.ts`, `tavily.ts`, `brave.ts`, `tinyfish.ts`, `serpapi.ts`, `firecrawl.ts`, `anysearch.ts`, `duckduckgo.ts`, `querit.ts` | Search providers |
 | `querit.ts` | Querit Contents extraction (and its search client) |
 | `brave-rate-limit.ts` | Adaptive Brave rate-limit queue |
 | `extract.ts` | URL/file routing, HTTP extraction, fallback orchestration |
@@ -248,7 +253,7 @@ Report suspected vulnerabilities through GitHub private vulnerability reporting 
 | `summary-model-scope.ts` | Model registry scope helpers shared with `page-query.ts` |
 | `ssrf-protection.ts` | URL, redirect, and DNS validation |
 | `auth-fetch.ts` | Browser-cookie auth profile resolution and redirect guard |
-| `chrome-cookies.ts`, `gemini-web-config.ts` | Chromium cookie extraction and its opt-in config |
+| `chrome-cookies.ts`, `browser-cookie-config.ts` | Chromium cookie extraction and its opt-in config |
 | `credential-source.ts` | Literal / env / command credential resolution |
 | `data-uri-sanitize.ts` | Inline `data:` URI omission |
 | `storage.ts` | Session-aware result and fetch-cache storage |

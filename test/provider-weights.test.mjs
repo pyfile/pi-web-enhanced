@@ -7,7 +7,7 @@ import {
 	sampleWeightedProvider,
 } from "../search-provider-weights.ts";
 
-const ALLOWED = ["exa", "tavily", "anysearch", "tinyfish", "serpapi", "firecrawl", "brave", "duckduckgo"];
+const ALLOWED = ["exa", "tavily", "anysearch", "tinyfish", "serpapi", "firecrawl", "brave", "duckduckgo", "querit"];
 
 // Deterministic LCG so a fixed seed always yields the same draw.
 function seededRandom(seed) {
@@ -25,35 +25,38 @@ test("parseProviderWeights returns null for the plain string and string-array fo
 	assert.equal(parseProviderWeights({ exa: 3 }, ALLOWED), null);
 });
 
-test("parseProviderWeights normalizes names and preserves integer weights", () => {
-	assert.deepEqual(parseProviderWeights([["Exa", 3], [" brave ", -2]], ALLOWED), [
+test("parseProviderWeights normalizes names and preserves positive integer weights", () => {
+	assert.deepEqual(parseProviderWeights([["Exa", 3], [" brave ", 2]], ALLOWED), [
 		{ provider: "exa", weight: 3 },
-		{ provider: "brave", weight: -2 },
+		{ provider: "brave", weight: 2 },
 	]);
 	assert.deepEqual(providerWeightNames(parseProviderWeights([["exa", 1], ["tavily", 1]], ALLOWED)), ["exa", "tavily"]);
+	assert.deepEqual(parseProviderWeights([["querit", 2]], ALLOWED), [{ provider: "querit", weight: 2 }]);
 });
 
-test("parseProviderWeights clamps extreme weights so exp cannot overflow", () => {
-	assert.deepEqual(parseProviderWeights([["exa", 100000]], ALLOWED), [{ provider: "exa", weight: 50 }]);
-	assert.deepEqual(parseProviderWeights([["exa", -100000]], ALLOWED), [{ provider: "exa", weight: -50 }]);
+test("parseProviderWeights preserves large positive weights without clamping", () => {
+	assert.deepEqual(parseProviderWeights([["exa", 100000]], ALLOWED), [{ provider: "exa", weight: 100000 }]);
 });
 
 test("parseProviderWeights rejects malformed entries", () => {
-	const label = "provider in /tmp/web-search.json";
+	const label = "provider in /tmp/web-search-enhanced.json";
 	assert.throws(() => parseProviderWeights([["nope", 1]], ALLOWED, label), /invalid provider: nope/);
-	assert.throws(() => parseProviderWeights([["exa", 1.5]], ALLOWED, label), /weight for "exa" must be an integer/);
-	assert.throws(() => parseProviderWeights([["exa", "3"]], ALLOWED, label), /weight for "exa" must be an integer/);
+	assert.throws(() => parseProviderWeights([["exa", 1.5]], ALLOWED, label), /weight for "exa" must be a positive integer/);
+	assert.throws(() => parseProviderWeights([["exa", "3"]], ALLOWED, label), /weight for "exa" must be a positive integer/);
+	assert.throws(() => parseProviderWeights([["exa", 0]], ALLOWED, label), /weight for "exa" must be a positive integer/);
+	assert.throws(() => parseProviderWeights([["exa", -2]], ALLOWED, label), /weight for "exa" must be a positive integer/);
 	assert.throws(() => parseProviderWeights([["exa", 3], ["exa", 1]], ALLOWED, label), /must not contain duplicates: exa/);
 	assert.throws(() => parseProviderWeights([[3, 1]], ALLOWED, label), /provider names must be strings/);
 	assert.throws(() => parseProviderWeights([["exa", 1, 2]], ALLOWED, label), /\[providerName, weight\] pairs/);
 });
 
-test("sampleWeightedProvider follows exp(weight) probabilities", async () => {
-	const weights = parseProviderWeights([["exa", 0], ["brave", 1], ["tavily", 2]], ALLOWED);
+test("sampleWeightedProvider follows linear weight probabilities", async () => {
+	const weights = parseProviderWeights([["exa", 1], ["brave", 2], ["tavily", 3]], ALLOWED);
+	const total = 1 + 2 + 3;
 	const expected = {
-		exa: Math.exp(0) / (Math.exp(0) + Math.exp(1) + Math.exp(2)),
-		brave: Math.exp(1) / (Math.exp(0) + Math.exp(1) + Math.exp(2)),
-		tavily: Math.exp(2) / (Math.exp(0) + Math.exp(1) + Math.exp(2)),
+		exa: 1 / total,
+		brave: 2 / total,
+		tavily: 3 / total,
 	};
 
 	const random = seededRandom(20261002);
@@ -71,7 +74,7 @@ test("sampleWeightedProvider follows exp(weight) probabilities", async () => {
 });
 
 test("sampleWeightedProvider renormalizes over available providers only", async () => {
-	const weights = parseProviderWeights([["exa", 5], ["brave", 0]], ALLOWED);
+	const weights = parseProviderWeights([["exa", 5], ["brave", 1]], ALLOWED);
 	// exa has no credentials: every draw must land on brave, never on exa.
 	const isAvailable = (provider) => provider === "brave";
 	for (let index = 0; index < 50; index++) {
@@ -84,7 +87,7 @@ test("sampleWeightedProvider returns null when nothing in the list is usable", a
 });
 
 test("sampleWeightedProvider is deterministic for a fixed RNG", async () => {
-	const weights = parseProviderWeights([["exa", 2], ["brave", 1], ["tavily", 0]], ALLOWED);
+	const weights = parseProviderWeights([["exa", 2], ["brave", 1], ["tavily", 3]], ALLOWED);
 	const first = [];
 	const second = [];
 	for (let index = 0; index < 20; index++) first.push(await sampleWeightedProvider(weights, () => true, seededRandom(index + 7)));

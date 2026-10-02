@@ -33,7 +33,7 @@ function buildChildScript(moduleUrl) {
 		const markerPath = join(tempDir, "extract-loaded");
 		process.env.PI_CODING_AGENT_DIR = tempDir;
 		await writeFile(
-			join(tempDir, "web-search.json"),
+			join(tempDir, "web-search-enhanced.json"),
 			JSON.stringify({ ssrf: { allowRanges: ["127.0.0.0/8"] } }),
 		);
 

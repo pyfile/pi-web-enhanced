@@ -79,7 +79,7 @@ function readConfigSequence(configs) {
 				const { loadPDFConfig } = await import(${JSON.stringify(pdfModuleUrl)});
 				const values = [];
 				for (const config of configs) {
-					if (config !== null) writeFileSync(join(${JSON.stringify(configDir)}, "web-search.json"), JSON.stringify(config));
+					if (config !== null) writeFileSync(join(${JSON.stringify(configDir)}, "web-search-enhanced.json"), JSON.stringify(config));
 					values.push(loadPDFConfig().enabled);
 				}
 				if (configs.length === 1) console.log(JSON.stringify(loadPDFConfig()));

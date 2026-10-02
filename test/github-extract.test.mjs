@@ -151,7 +151,7 @@ test("malformed GitHub identifiers cannot delete outside the clone cache", async
 	await mkdir(agentDir, { recursive: true });
 	await mkdir(victim, { recursive: true });
 	await writeFile(join(victim, "marker.txt"), "preserve", "utf8");
-	await writeFile(join(agentDir, "web-search.json"), JSON.stringify({ githubClone: { clonePath: join(root, "cache") } }), "utf8");
+	await writeFile(join(agentDir, "web-search-enhanced.json"), JSON.stringify({ githubClone: { clonePath: join(root, "cache") } }), "utf8");
 
 	const child = spawnSync(process.execPath, ["--input-type=module"], {
 		input: `
@@ -177,7 +177,7 @@ test("clearCloneCache removes only its runtime directory", { skip: process.platf
 	await mkdir(binDir, { recursive: true });
 	await mkdir(clonePath, { recursive: true });
 	await writeFile(sibling, "preserve", "utf8");
-	await writeFile(join(agentDir, "web-search.json"), JSON.stringify({ githubClone: { clonePath } }), "utf8");
+	await writeFile(join(agentDir, "web-search-enhanced.json"), JSON.stringify({ githubClone: { clonePath } }), "utf8");
 	await writeFakeExecutable(binDir, "gh", "process.exit(1);");
 	await writeFakeExecutable(binDir, "git", `
 		const { mkdirSync, writeFileSync } = require("node:fs");
@@ -239,7 +239,7 @@ test("clone cleanup unlinks a direct-child symlink without deleting its target",
 	await mkdir(clonePath, { recursive: true });
 	await mkdir(outside, { recursive: true });
 	await writeFile(join(outside, "marker.txt"), "preserve", "utf8");
-	await writeFile(join(agentDir, "web-search.json"), JSON.stringify({ githubClone: { clonePath } }), "utf8");
+	await writeFile(join(agentDir, "web-search-enhanced.json"), JSON.stringify({ githubClone: { clonePath } }), "utf8");
 	await writeFakeExecutable(binDir, "gh", "process.exit(1);");
 	await writeFakeExecutable(binDir, "git", `
 		const { symlinkSync, writeFileSync } = require("node:fs");
@@ -280,7 +280,7 @@ test("a failed clone cannot clean up another process's in-flight destination", {
 	const bRelease = join(root, "b-release");
 	await mkdir(agentDir, { recursive: true });
 	await mkdir(binDir, { recursive: true });
-	await writeFile(join(agentDir, "web-search.json"), JSON.stringify({ githubClone: { clonePath } }), "utf8");
+	await writeFile(join(agentDir, "web-search-enhanced.json"), JSON.stringify({ githubClone: { clonePath } }), "utf8");
 	await writeControlledGh(binDir);
 
 	const childSource = `
@@ -351,7 +351,7 @@ test("runtime cache reuse and cleanup stay isolated across processes", { skip: p
 	const bCount = join(root, "b-count");
 	await mkdir(agentDir, { recursive: true });
 	await mkdir(binDir, { recursive: true });
-	await writeFile(join(agentDir, "web-search.json"), JSON.stringify({ githubClone: { clonePath } }), "utf8");
+	await writeFile(join(agentDir, "web-search-enhanced.json"), JSON.stringify({ githubClone: { clonePath } }), "utf8");
 	await writeControlledGh(binDir);
 
 	const commonEnv = {
@@ -451,7 +451,7 @@ test("clone runtime creation proceeds while background cleanup is gated", { skip
 	await mkdir(binDir, { recursive: true });
 	await mkdir(clonePath, { recursive: true });
 	await writeFile(join(clonePath, "runtime-unknown"), "preserve", "utf8");
-	await writeFile(join(agentDir, "web-search.json"), JSON.stringify({ githubClone: { clonePath } }), "utf8");
+	await writeFile(join(agentDir, "web-search-enhanced.json"), JSON.stringify({ githubClone: { clonePath } }), "utf8");
 	await writeControlledGh(binDir);
 
 	const commonEnv = {
@@ -524,7 +524,7 @@ test("background cleanup removes dead runtimes after unrelated files and ownerle
 	for (let i = 0; i < 1024; i++) {
 		await writeFile(join(clonePath, `unrelated-${String(i).padStart(4, "0")}`), "preserve", "utf8");
 	}
-	await writeFile(join(agentDir, "web-search.json"), JSON.stringify({ githubClone: { clonePath } }), "utf8");
+	await writeFile(join(agentDir, "web-search-enhanced.json"), JSON.stringify({ githubClone: { clonePath } }), "utf8");
 	await writeControlledGh(binDir);
 
 	const commonEnv = {
@@ -604,7 +604,7 @@ test("oversized malformed owner metadata is preserved during extraction", { skip
 	await writeFile(join(malformedRuntime, ".owner.json"), "{" + "x".repeat(4095), "utf8");
 	await mkdir(deadRuntime, { recursive: true });
 	await writeFile(join(deadRuntime, ".owner.json"), JSON.stringify({ version: 1, pid: 999999999, platform: process.platform, bootId: "test", startTime: "1" }), "utf8");
-	await writeFile(join(agentDir, "web-search.json"), JSON.stringify({ githubClone: { clonePath } }), "utf8");
+	await writeFile(join(agentDir, "web-search-enhanced.json"), JSON.stringify({ githubClone: { clonePath } }), "utf8");
 	await writeControlledGh(binDir);
 
 	const commonEnv = {
@@ -663,7 +663,7 @@ test("clone runtime initialization preserves live, unknown, and symlink runtimes
 	await mkdir(outside, { recursive: true });
 	await writeFile(join(outside, "marker.txt"), "preserve", "utf8");
 	await symlink(outside, symlinkRuntime, "dir");
-	await writeFile(join(agentDir, "web-search.json"), JSON.stringify({ githubClone: { clonePath } }), "utf8");
+	await writeFile(join(agentDir, "web-search-enhanced.json"), JSON.stringify({ githubClone: { clonePath } }), "utf8");
 	await writeControlledGh(binDir);
 
 	const commonEnv = {
@@ -713,7 +713,7 @@ test("normalizeClonePath expands ~ to HOME", async () => {
 	const agentDir = join(root, "agent-dir");
 	await mkdir(agentDir, { recursive: true });
 	await writeFile(
-		join(agentDir, "web-search.json"),
+		join(agentDir, "web-search-enhanced.json"),
 		JSON.stringify({ githubClone: { clonePath: "~/test-repos" } }),
 		"utf8",
 	);
@@ -745,7 +745,7 @@ test("normalizeClonePath expands $HOME and other env vars", async () => {
 	const agentDir = join(root, "agent-dir");
 	await mkdir(agentDir, { recursive: true });
 	await writeFile(
-		join(agentDir, "web-search.json"),
+		join(agentDir, "web-search-enhanced.json"),
 		JSON.stringify({ githubClone: { clonePath: "$HOME/my-repos" } }),
 		"utf8",
 	);
@@ -771,7 +771,7 @@ test("normalizeClonePath handles absolute paths without expansion", async () => 
 	const agentDir = join(root, "agent-dir");
 	await mkdir(agentDir, { recursive: true });
 	await writeFile(
-		join(agentDir, "web-search.json"),
+		join(agentDir, "web-search-enhanced.json"),
 		JSON.stringify({ githubClone: { clonePath: "/tmp/my-repos" } }),
 		"utf8",
 	);
@@ -801,7 +801,7 @@ test("GitHub clones disable interactive credential prompts", { skip: process.pla
 	await mkdir(agentDir, { recursive: true });
 	await mkdir(binDir, { recursive: true });
 	await writeFile(
-		join(agentDir, "web-search.json"),
+		join(agentDir, "web-search-enhanced.json"),
 		// Not a timeout test: the fake git (a Node shim) must *finish* its fake
 		// clone. Give it room for a cold Node boot on a slow CI host.
 		JSON.stringify({ githubClone: { clonePath, cloneTimeoutSeconds: 4 } }),
@@ -860,7 +860,7 @@ test("GitHub clone timeout force-kills the SIGTERM-resistant process group", { s
 	await mkdir(agentDir, { recursive: true });
 	await mkdir(binDir, { recursive: true });
 	await writeFile(
-		join(agentDir, "web-search.json"),
+		join(agentDir, "web-search-enhanced.json"),
 		// The fake git is a "#!/usr/bin/env node" shim: the timeout must outlast a
 		// cold Node boot on a slow CI host, or the tree is killed before the shim
 		// has recorded its pids (ENOENT below). 3 s is still a fast test.
@@ -925,7 +925,7 @@ test("githubClone.enabled false skips GitHub clone/API specialization", async ()
 	const agentDir = join(root, "agent-dir");
 	await mkdir(agentDir, { recursive: true });
 	await writeFile(
-		join(agentDir, "web-search.json"),
+		join(agentDir, "web-search-enhanced.json"),
 		JSON.stringify({ githubClone: { enabled: false } }),
 		"utf8",
 	);

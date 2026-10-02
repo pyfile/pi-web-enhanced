@@ -10,10 +10,11 @@ import { isSerpApiAvailable, searchWithSerpApi } from "./serpapi.ts";
 import { isFirecrawlAvailable, searchWithFirecrawl } from "./firecrawl.ts";
 import { isBraveAvailable, searchWithBrave } from "./brave.ts";
 import { isDuckDuckGoAvailable, searchWithDuckDuckGo } from "./duckduckgo.ts";
+import { isQueritAvailable, searchWithQuerit } from "./querit.ts";
 import { parseProviderWeights, providerWeightNames, sampleWeightedProvider, type ProviderWeight } from "./search-provider-weights.ts";
 import { getWebSearchConfigPath } from "./utils.ts";
 
-export const RESOLVED_SEARCH_PROVIDERS = ["exa", "tavily", "anysearch", "tinyfish", "serpapi", "firecrawl", "brave", "duckduckgo"] as const;
+export const RESOLVED_SEARCH_PROVIDERS = ["exa", "tavily", "anysearch", "tinyfish", "serpapi", "firecrawl", "brave", "duckduckgo", "querit"] as const;
 export const SEARCH_PROVIDERS = ["auto", "all", ...RESOLVED_SEARCH_PROVIDERS] as const;
 
 export type ResolvedSearchProvider = typeof RESOLVED_SEARCH_PROVIDERS[number];
@@ -77,7 +78,7 @@ export interface AttributedSearchResponse extends SearchResponse {
 }
 
 const CONFIG_PATH = getWebSearchConfigPath();
-// Explicit-only providers (AnySearch, SerpApi, DuckDuckGo) are deliberately absent:
+// Explicit-only providers (AnySearch, SerpApi, DuckDuckGo, Querit) are deliberately absent:
 // `all` must never fan out to an opt-in or paid provider without the user asking for it.
 export const ALL_SEARCH_PROVIDERS: ResolvedSearchProvider[] = ["exa", "brave", "tinyfish", "tavily", "firecrawl"];
 const VALID_ROUTING_KINDS = ["transient", "quota", "network", "invalid-response", "unsupported"] as const;
@@ -89,6 +90,8 @@ type SearchConfig = {
 	searchRouting?: SearchRoutingConfig;
 	searchModel?: string;
 	allowedProviders?: ResolvedSearchProvider[];
+	/** Total balanced-search attempts (1 = no retry). */
+	retry?: number;
 };
 
 let cachedSearchConfig: SearchConfig | null = null;
@@ -114,6 +117,7 @@ function getSearchConfig(): SearchConfig {
 	}
 
 	const searchModel = normalizeSearchModel(raw.searchModel);
+	const retry = normalizeRetry(raw.retry);
 	const webSearch = raw.webSearch;
 	if (webSearch !== undefined && (!webSearch || typeof webSearch !== "object" || Array.isArray(webSearch))) {
 		throw new Error(`webSearch in ${CONFIG_PATH} must be an object`);
@@ -151,6 +155,7 @@ function getSearchConfig(): SearchConfig {
 		...(providerWeights ? { providerWeights } : {}),
 		...(searchRouting ? { searchRouting } : {}),
 		...(searchModel ? { searchModel } : {}),
+		...(retry !== undefined ? { retry } : {}),
 		...(allowedProviders ? { allowedProviders } : {}),
 	};
 	return cachedSearchConfig;
@@ -194,6 +199,14 @@ function normalizeSearchModel(value: unknown): string | undefined {
 	if (typeof value !== "string") return undefined;
 	const normalized = value.trim();
 	return normalized.length > 0 ? normalized : undefined;
+}
+
+function normalizeRetry(value: unknown): number | undefined {
+	if (value === undefined) return undefined;
+	if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 1) {
+		throw new Error(`retry in ${CONFIG_PATH} must be a positive integer`);
+	}
+	return value;
 }
 
 function normalizeResolvedProviderList(value: unknown, label: string): ResolvedSearchProvider[] {
@@ -241,7 +254,7 @@ export function normalizeSearchProviderSelection(value: unknown, label = "provid
 
 // How a configured weighted provider list (`provider: [[name, weight], ...]`)
 // is turned into a concrete selection:
-//   balanced — sample one provider per call, weighted by exp(weight)
+//   balanced — sample one provider per call, weighted by relative weight
 //   enhanced — search every provider in the list at once
 export type ProviderSelectionMode = "balanced" | "enhanced";
 
@@ -321,6 +334,7 @@ async function searchWithResolvedProvider(
 	if (provider === "serpapi") return { ...(await searchWithSerpApi(query, options)), provider };
 	if (provider === "firecrawl") return { ...(await searchWithFirecrawl(query, options)), provider };
 	if (provider === "brave") return { ...(await searchWithBrave(query, options)), provider };
+	if (provider === "querit") return { ...(await searchWithQuerit(query, options)), provider };
 	return { ...(await searchWithDuckDuckGo(query, options)), provider };
 }
 
@@ -332,6 +346,7 @@ export async function isResolvedProviderAvailable(provider: ResolvedSearchProvid
 	if (provider === "serpapi") return isSerpApiAvailable();
 	if (provider === "firecrawl") return isFirecrawlAvailable();
 	if (provider === "brave") return isBraveAvailable();
+	if (provider === "querit") return isQueritAvailable();
 	return isDuckDuckGoAvailable();
 }
 
@@ -341,6 +356,7 @@ export function providerLabel(provider: ResolvedSearchProvider): string {
 	if (provider === "duckduckgo") return "DuckDuckGo";
 	if (provider === "anysearch") return "AnySearch";
 	if (provider === "serpapi") return "SerpApi";
+	if (provider === "querit") return "Querit";
 	return provider.charAt(0).toUpperCase() + provider.slice(1);
 }
 
@@ -355,7 +371,7 @@ async function searchWithProviders(
 		available: await isResolvedProviderAvailable(provider, options),
 	})))).filter((entry) => entry.available).map((entry) => entry.provider);
 	if (providers.length === 0) {
-		throw new Error("No configured search provider available for provider \"all\". AnySearch, SerpApi, and DuckDuckGo are excluded.");
+		throw new Error("No configured search provider available for provider \"all\". AnySearch, SerpApi, DuckDuckGo, and Querit are excluded.");
 	}
 
 	const settled = await Promise.allSettled(
@@ -454,25 +470,11 @@ async function resolveWeightedSelection(
 	return sampled ?? "auto";
 }
 
-export async function search(query: string, options: FullSearchOptions = {}): Promise<AttributedSearchResponse> {
-	const config = getSearchConfig();
-	const requestedProvider = options.provider === undefined || options.provider === "auto"
-		? config.searchProvider
-		: options.provider;
-	// The weighted form is only consulted when the caller did not pin a provider.
-	const provider = config.providerWeights && requestedProvider === config.searchProvider
-		? await resolveWeightedSelection(config.providerWeights, options, options.selectionMode ?? "balanced")
-		: requestedProvider;
-	assertSearchProviderSelectionAllowed(provider, "Requested provider");
-	if (Array.isArray(provider)) {
-		return searchWithProviders(query, options, normalizeResolvedProviderList(provider, "provider"));
-	}
-	if (provider === "all") return searchWithProviders(query, options);
-	if (provider !== "auto") return searchWithResolvedProvider(provider, query, options);
-	if (!config.searchProviderConfigured && config.searchRouting) {
-		return searchWithConfiguredRouting(query, options, config.searchRouting);
-	}
-
+async function searchWithAutoChain(
+	config: SearchConfig,
+	query: string,
+	options: FullSearchOptions,
+): Promise<AttributedSearchResponse> {
 	const fallbackErrors: string[] = [];
 	const allowed = new Set(config.allowedProviders ?? RESOLVED_SEARCH_PROVIDERS);
 
@@ -535,6 +537,83 @@ export async function search(query: string, options: FullSearchOptions = {}): Pr
 		`  1. Set exaApiKey, braveApiKey, tavilyApiKey, firecrawlBaseUrl, or tinyfishApiKey in ${CONFIG_PATH}\n` +
 		"  2. Set EXA_API_KEY, BRAVE_API_KEY, TAVILY_API_KEY, FIRECRAWL_BASE_URL, or TINYFISH_API_KEY env vars\n" +
 		"  3. Use Exa MCP with no API key for keyless search\n" +
-		"  4. Explicitly select provider: \"anysearch\" for AnySearch, \"serpapi\" for SerpApi Google SERP, or \"duckduckgo\" for keyless DuckDuckGo"
+		"  4. Explicitly select provider: \"anysearch\" for AnySearch, \"serpapi\" for SerpApi Google SERP, \"querit\" for Querit, or \"duckduckgo\" for keyless DuckDuckGo"
 	);
+}
+
+async function executeSelection(
+	config: SearchConfig,
+	query: string,
+	options: FullSearchOptions,
+	selection: SearchProviderSelection,
+): Promise<AttributedSearchResponse> {
+	if (Array.isArray(selection)) {
+		return searchWithProviders(query, options, normalizeResolvedProviderList(selection, "provider"));
+	}
+	if (selection === "all") return searchWithProviders(query, options);
+	if (selection !== "auto") return searchWithResolvedProvider(selection, query, options);
+	return searchWithAutoChain(config, query, options);
+}
+
+export async function search(query: string, options: FullSearchOptions = {}): Promise<AttributedSearchResponse> {
+	const config = getSearchConfig();
+	const requestedProvider = options.provider === undefined || options.provider === "auto"
+		? config.searchProvider
+		: options.provider;
+	const mode = options.selectionMode ?? "balanced";
+	// The weighted form is only consulted when the caller did not pin a provider.
+	const weighted = config.providerWeights !== undefined && requestedProvider === config.searchProvider;
+
+	// Enhanced mode fans out the whole configured provider list; it is one
+	// all-providers call, not a retried balanced attempt.
+	if (mode === "enhanced") {
+		const selection = weighted ? providerWeightNames(config.providerWeights!) : requestedProvider;
+		assertSearchProviderSelectionAllowed(selection, "Requested provider");
+		return executeSelection(config, query, options, selection);
+	}
+
+	// Preserve the original routing behavior: with routing configured and no
+	// explicit provider, the routing rotation is the primary resolution.
+	if (requestedProvider === "auto" && !config.searchProviderConfigured && config.searchRouting) {
+		return searchWithConfiguredRouting(query, options, config.searchRouting);
+	}
+
+	// Validate the static selection once so policy/shape errors are not retried.
+	const staticSelection: SearchProviderSelection = Array.isArray(requestedProvider)
+		? normalizeResolvedProviderList(requestedProvider, "provider")
+		: requestedProvider;
+	if (!weighted) assertSearchProviderSelectionAllowed(staticSelection, "Requested provider");
+
+	// Balanced attempts: each attempt re-samples a weighted provider, so a
+	// retry can land on a different provider.
+	const maxAttempts = config.retry ?? 1;
+	const attemptErrors: string[] = [];
+	let lastError: unknown;
+	for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+		try {
+			const selection = weighted
+				? await resolveWeightedSelection(config.providerWeights!, options, "balanced")
+				: staticSelection;
+			return await executeSelection(config, query, options, selection);
+		} catch (err) {
+			if (err instanceof CredentialResolutionError || isAbortError(err)) throw err;
+			lastError = err;
+			attemptErrors.push(errorMessage(err));
+		}
+	}
+
+	// Attempts are exhausted: fall back to the configured routing rotation.
+	if (config.searchRouting) {
+		try {
+			return await searchWithConfiguredRouting(query, options, config.searchRouting);
+		} catch (routingError) {
+			throw new Error(
+				`Balanced search failed after ${attemptErrors.length} attempt${attemptErrors.length === 1 ? "" : "s"}:\n  - ${attemptErrors.join("\n  - ")}\n` +
+				`searchRouting fallback failed: ${errorMessage(routingError)}`,
+			);
+		}
+	}
+
+	if (attemptErrors.length === 1) throw lastError;
+	throw new Error(`Balanced search failed after ${attemptErrors.length} attempts:\n  - ${attemptErrors.join("\n  - ")}`);
 }

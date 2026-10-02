@@ -6,6 +6,10 @@ import { isIP } from "node:net";
 import { homedir, hostname, tmpdir } from "node:os";
 import { join } from "node:path";
 
+// This fork reads its own global config name so it can sit alongside upstream
+// pi-web-access without clobbering `web-search.json`.
+const CONFIG_FILE_NAME = "web-search-enhanced.json";
+
 let cachedWebSearchConfigDir: string | undefined;
 
 export function getWebSearchConfigDir(): string {
@@ -17,23 +21,23 @@ export function getWebSearchConfigDir(): string {
 	const xdgConfigHome = process.env.XDG_CONFIG_HOME;
 	if (xdgConfigHome) {
 		const xdgDir = join(xdgConfigHome, "pi");
-		if (existsSync(join(xdgDir, "web-search.json"))) return cachedWebSearchConfigDir = xdgDir;
+		if (existsSync(join(xdgDir, CONFIG_FILE_NAME))) return cachedWebSearchConfigDir = xdgDir;
 
 		const legacyDir = join(homedir(), ".pi");
-		if (existsSync(join(legacyDir, "web-search.json"))) return cachedWebSearchConfigDir = legacyDir;
+		if (existsSync(join(legacyDir, CONFIG_FILE_NAME))) return cachedWebSearchConfigDir = legacyDir;
 		return cachedWebSearchConfigDir = xdgDir;
 	}
 	const agentDir = join(homedir(), ".pi", "agent");
-	if (existsSync(join(agentDir, "web-search.json"))) return cachedWebSearchConfigDir = agentDir;
+	if (existsSync(join(agentDir, CONFIG_FILE_NAME))) return cachedWebSearchConfigDir = agentDir;
 
 	const legacyDir = join(homedir(), ".pi");
-	if (existsSync(join(legacyDir, "web-search.json"))) return cachedWebSearchConfigDir = legacyDir;
+	if (existsSync(join(legacyDir, CONFIG_FILE_NAME))) return cachedWebSearchConfigDir = legacyDir;
 
 	return cachedWebSearchConfigDir = agentDir;
 }
 
 export function getWebSearchConfigPath(): string {
-	return join(getWebSearchConfigDir(), "web-search.json");
+	return join(getWebSearchConfigDir(), CONFIG_FILE_NAME);
 }
 
 interface ApiBaseUrlOptions {

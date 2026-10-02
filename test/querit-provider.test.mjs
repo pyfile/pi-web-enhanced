@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 
 const queritModuleUrl = new URL("../querit.ts", import.meta.url).href;
-const searchModuleUrl = new URL("../gemini-search.ts", import.meta.url).href;
+const searchModuleUrl = new URL("../search.ts", import.meta.url).href;
 const extractModuleUrl = new URL("../extract.ts", import.meta.url).href;
 
 const PROVIDER_ENV_KEYS = [
@@ -39,7 +39,7 @@ async function createHome(config = {}) {
 	const home = await mkdtemp(join(tmpdir(), "pi-web-access-querit-"));
 	await mkdir(join(home, ".pi", "agent"), { recursive: true });
 	await writeFile(
-		join(home, ".pi", "agent", "web-search.json"),
+		join(home, ".pi", "agent", "web-search-enhanced.json"),
 		JSON.stringify(config) + "\n",
 		"utf8",
 	);

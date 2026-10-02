@@ -11,7 +11,7 @@ const openaiModuleUrl = new URL("../openai-search.ts", import.meta.url).href;
 const perplexityModuleUrl = new URL("../perplexity.ts", import.meta.url).href;
 const tavilyModuleUrl = new URL("../tavily.ts", import.meta.url).href;
 const searxngModuleUrl = new URL("../searxng.ts", import.meta.url).href;
-const searchModuleUrl = new URL("../gemini-search.ts", import.meta.url).href;
+const searchModuleUrl = new URL("../search.ts", import.meta.url).href;
 const indexModuleUrl = new URL("../index.ts", import.meta.url).href;
 
 function runChild(script, env) {
@@ -149,7 +149,7 @@ test("Tavily search uses bearer auth and maps filters/content", async () => {
 
 test("Brave, keyed Exa, and Tavily honor base URL overrides without leaking credentials across origins", async () => {
 	const home = await mkdtemp(join(tmpdir(), "pi-web-access-provider-base-url-"));
-	await writeFile(join(home, "web-search.json"), JSON.stringify({
+	await writeFile(join(home, "web-search-enhanced.json"), JSON.stringify({
 		braveApiKey: "brave-config-key",
 		braveBaseUrl: "https://gateway.example.com/brave/res/v1/",
 		exaApiKey: "exa-config-key",
@@ -388,7 +388,7 @@ test("Exa direct API key ignores full legacy usage counter", async () => {
 	const child = runChild(`
 		const dir = ${JSON.stringify(home)};
 		const { readFileSync, writeFileSync } = await import("node:fs");
-		writeFileSync(dir + "/web-search.json", JSON.stringify({ exaApiKey: "exa-paid-key" }));
+		writeFileSync(dir + "/web-search-enhanced.json", JSON.stringify({ exaApiKey: "exa-paid-key" }));
 		writeFileSync(dir + "/exa-usage.json", JSON.stringify({ month: new Date().toISOString().slice(0, 7), count: 1000 }));
 
 		let capturedUrl = "";
@@ -440,7 +440,7 @@ test("Exa command source is lazy, overrides stale env, and rotates per request",
 	const counterPath = join(home, "counter");
 	await writeFile(commandPath, `#!/bin/sh\ncount=0\n[ ! -f "$1" ] || count=$(cat "$1")\ncount=$((count + 1))\nprintf '%s' "$count" >"$1"\nprintf 'synthetic-exa-%s\\n' "$count"\n`, "utf8");
 	await chmod(commandPath, 0o700);
-	await writeFile(join(home, "web-search.json"), JSON.stringify({
+	await writeFile(join(home, "web-search-enhanced.json"), JSON.stringify({
 		exaApiKey: `!${commandPath} ${counterPath}`,
 	}) + "\n", "utf8");
 
@@ -480,7 +480,7 @@ test("failed Exa command source is redacted and blocks MCP or provider fallback"
 	const commandPath = join(home, "fail-key.sh");
 	await writeFile(commandPath, "#!/bin/sh\nprintf 'SYNTHETIC_SECRET_MUST_NOT_ESCAPE\\n' >&2\nexit 9\n", "utf8");
 	await chmod(commandPath, 0o700);
-	await writeFile(join(home, "web-search.json"), JSON.stringify({
+	await writeFile(join(home, "web-search-enhanced.json"), JSON.stringify({
 		exaApiKey: `!${commandPath}`,
 	}) + "\n", "utf8");
 

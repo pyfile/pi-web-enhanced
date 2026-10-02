@@ -18,7 +18,7 @@ function cleanEnv(root) {
 
 async function writeConfig(root, config) {
 	if (config === undefined) return;
-	await writeFile(join(root, "web-search.json"), typeof config === "string" ? config : JSON.stringify(config), "utf8");
+	await writeFile(join(root, "web-search-enhanced.json"), typeof config === "string" ? config : JSON.stringify(config), "utf8");
 }
 
 async function runResolver(config, options) {
@@ -104,7 +104,7 @@ test("fetch.timeout accepts seconds and rounds fractional milliseconds up", asyn
 test("invalid fetch.timeout values fail closed with the config path", async () => {
 	for (const timeout of [0, -1, null, "2", {}]) {
 		const output = await runResolver({ fetch: { timeout } });
-		assert.match(output.error, /Invalid fetch\.timeout .*web-search\.json/);
+		assert.match(output.error, /Invalid fetch\.timeout .*web-search-enhanced\.json/);
 	}
 });
 
@@ -112,15 +112,15 @@ test("fetch.timeout rejects seconds that overflow safe millisecond conversion", 
 	assert.deepEqual(await runResolver({ fetch: { timeout: 2147483.647 } }), { timeoutMs: 2147483647 });
 	for (const timeout of [2147483.648, 1e308, Number.MAX_SAFE_INTEGER]) {
 		const output = await runResolver({ fetch: { timeout } });
-		assert.match(output.error, /Invalid fetch\.timeout .*web-search\.json/);
+		assert.match(output.error, /Invalid fetch\.timeout .*web-search-enhanced\.json/);
 		assert.match(output.error, /finite safe integer/);
 		assert.match(output.error, /2147483647/);
 	}
 });
 
-test("malformed web-search.json fails closed with the config path", async () => {
+test("malformed web-search-enhanced.json fails closed with the config path", async () => {
 	const output = await runResolver("{");
-	assert.match(output.error, /Failed to parse .*web-search\.json/);
+	assert.match(output.error, /Failed to parse .*web-search-enhanced\.json/);
 });
 
 test("the configured fetch.timeout governs the direct HTTP attempt", async () => {
@@ -139,7 +139,7 @@ test("explicit timeoutMs takes precedence over invalid fetch.timeout config", as
 test("the direct HTTP attempt does not swallow invalid timeout configuration", async () => {
 	const output = await runHostedExtract(hostedConfig(0));
 	assert.deepEqual(output.calls, []);
-	assert.match(output.result.error, /Invalid fetch\.timeout .*web-search\.json/);
+	assert.match(output.result.error, /Invalid fetch\.timeout .*web-search-enhanced\.json/);
 });
 
 test("positive sub-millisecond fetch.timeout values use a nonzero budget", async () => {

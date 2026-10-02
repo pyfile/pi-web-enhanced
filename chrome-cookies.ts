@@ -3,7 +3,7 @@ import { pbkdf2Sync, createDecipheriv } from "node:crypto";
 import { copyFileSync, existsSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir, homedir } from "node:os";
 import { isAbsolute, join, sep } from "node:path";
-import { isBrowserCookieAccessAllowed, type BrowserCookiePreset } from "./gemini-web-config.ts";
+import { isBrowserCookieAccessAllowed, type BrowserCookiePreset } from "./browser-cookie-config.ts";
 
 export type CookieMap = Record<string, string>;
 
@@ -55,18 +55,6 @@ interface BrowserCookieEntry {
 	path: string;
 }
 
-const GOOGLE_ORIGINS = [
-	"https://gemini.google.com",
-	"https://accounts.google.com",
-	"https://www.google.com",
-];
-
-const ALL_COOKIE_NAMES = new Set([
-	"__Secure-1PSID", "__Secure-1PSIDTS", "__Secure-1PSIDCC", "__Secure-1PAPISID", "NID", "AEC", "SOCS",
-	"__Secure-BUCKET", "__Secure-ENID", "SID", "HSID", "SSID", "APISID", "SAPISID", "__Secure-3PSID",
-	"__Secure-3PSIDTS", "__Secure-3PAPISID", "SIDCC",
-]);
-
 const MACOS_BROWSER_CONFIGS: BrowserConfig[] = [
 	{ id: "helium", name: "Helium", baseDir: "Library/Application Support/net.imput.helium", keychainService: "Helium Storage Key", keychainAccount: "Helium" },
 	{ id: "chrome", name: "Chrome", baseDir: "Library/Application Support/Google/Chrome", keychainService: "Chrome Safe Storage", keychainAccount: "Chrome" },
@@ -90,29 +78,12 @@ let lastCookieDiagnosticDetails: BrowserCookieDiagnosticDetails | null = null;
 let sqliteModule: typeof import("node:sqlite") | null = null;
 let sqliteImportAttempted = false;
 
-export function getLastGoogleCookieDiagnostic(): string | null {
-	return lastCookieDiagnostic;
-}
-
 export function getLastBrowserCookieDiagnostic(): string | null {
 	return lastCookieDiagnostic;
 }
 
-export function getLastGoogleCookieDiagnosticDetails(): BrowserCookieDiagnosticDetails | null {
+export function getLastBrowserCookieDiagnosticDetails(): BrowserCookieDiagnosticDetails | null {
 	return lastCookieDiagnosticDetails;
-}
-
-export async function getGoogleCookies(
-	options?: { browser?: BrowserCookiePreset; profile?: string; requiredCookies?: string[] },
-): Promise<{ cookies: CookieMap; warnings: string[] } | null> {
-	return getBrowserCookiesForHosts({
-		hosts: GOOGLE_ORIGINS.map((origin) => new URL(origin).hostname),
-		browser: options?.browser,
-		profile: options?.profile,
-		requiredCookies: options?.requiredCookies,
-		cookieNames: ALL_COOKIE_NAMES,
-		requiredLabel: "Gemini",
-	});
 }
 
 export async function getBrowserCookiesForHosts(
@@ -319,7 +290,7 @@ export async function getBrowserCookiesForHosts(
 			? "No detected Chromium profile contains cookies for the requested URL."
 			: "No detected Chromium profile contains cookies for the requested host.", attempts);
 	} else {
-		setCookieDiagnostic("Required Gemini cookies were not available or could not be decrypted.", attempts);
+		setCookieDiagnostic(`Required ${options.requiredLabel ?? "browser"} cookies were not available or could not be decrypted.`, attempts);
 	}
 	return null;
 }

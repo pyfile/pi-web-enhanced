@@ -13,7 +13,7 @@ async function search({ config = {}, env, succeedWith, failStatus = 429 }) {
 	const home = await mkdtemp(join(tmpdir(), "pi-web-access-tavily-key-pool-"));
 	const agentDir = join(home, "agent");
 	await mkdir(agentDir, { recursive: true });
-	await writeFile(join(agentDir, "web-search.json"), JSON.stringify(config), "utf8");
+	await writeFile(join(agentDir, "web-search-enhanced.json"), JSON.stringify(config), "utf8");
 	const childEnv = { ...process.env };
 	for (const key of Object.keys(childEnv)) if (/^(TAVILY_API_KEY|PI_WEB_ACCESS_TEST_MISSING_TAVILY_KEY)/.test(key)) delete childEnv[key];
 	const child = spawnSync(process.execPath, ["--input-type=module"], {

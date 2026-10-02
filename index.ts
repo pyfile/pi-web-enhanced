@@ -9,7 +9,7 @@ import { resolveAuthFetchProfile, type AuthFetchProfile } from "./auth-fetch.ts"
 import { findContent, type FindMode } from "./content-find.ts";
 import { answerFromPage } from "./page-query.ts";
 import { clearCloneCache } from "./github-extract.ts";
-import { ALL_SEARCH_PROVIDERS, assertSearchProviderSelectionAllowed, getAllowedSearchProviders, normalizeSearchProviderSelection, providerLabel, RESOLVED_SEARCH_PROVIDERS, search, type SearchProvider, type SearchProviderSelection, type ResolvedSearchProvider, type ProviderSelectionMode } from "./gemini-search.ts";
+import { ALL_SEARCH_PROVIDERS, assertSearchProviderSelectionAllowed, getAllowedSearchProviders, normalizeSearchProviderSelection, providerLabel, RESOLVED_SEARCH_PROVIDERS, search, type SearchProvider, type SearchProviderSelection, type ResolvedSearchProvider, type ProviderSelectionMode } from "./search.ts";
 import { parseProviderWeights } from "./search-provider-weights.ts";
 import type { SearchResult } from "./search-types.ts";
 import { getWebSearchConfigDir, getWebSearchConfigPath, runWithProxy } from "./utils.ts";
@@ -848,7 +848,7 @@ export default function (pi: ExtensionAPI) {
 		prepareArguments: (args) => parseStringifiedArrays(args, ["provider", "queries", "domainFilter"]) as never,
 		description: enhanced
 			? `Search the web with every provider in the configured provider list at once, using ${allowedSearchProviders.map(providerLabel).join(", ")}. Returns bounded source-linked search results or provider answers, identifies the providers used, and stores full results for retrieval by responseId. For comprehensive research, prefer queries (plural) with 2-4 varied angles over a single query. When includeContent is true, full page content is fetched in the background. This costs one search per provider, so prefer ${toolNames.webSearch} for routine lookups.`
-			: `Search the web with ${allowedSearchProviders.map(providerLabel).join(", ")}. With a weighted provider list configured, each call samples one provider with probability exp(weight)/Σexp(weight); otherwise the configured provider (or auto) is used. Returns bounded source-linked search results or provider answers, identifies the provider used, and stores full results for retrieval by responseId. For comprehensive research, prefer queries (plural) with 2-4 varied angles over a single query. When includeContent is true, full page content is fetched in the background. Use ${toolNames.webSearchEnhanced} to query every configured provider at once.`,
+			: `Search the web with ${allowedSearchProviders.map(providerLabel).join(", ")}. With a weighted provider list configured, each call samples one provider with probability weight/Σweight; otherwise the configured provider (or auto) is used. Returns bounded source-linked search results or provider answers, identifies the provider used, and stores full results for retrieval by responseId. For comprehensive research, prefer queries (plural) with 2-4 varied angles over a single query. When includeContent is true, full page content is fetched in the background. Use ${toolNames.webSearchEnhanced} to query every configured provider at once.`,
 		promptSnippet: enhanced
 			? "Use for exhaustive web research where coverage matters more than cost: queries every configured provider at once. Prefer {queries:[...]} with 2-4 varied angles."
 			: "Use for web research questions. Prefer {queries:[...]} with 2-4 varied angles over a single query for broader coverage. Omit provider unless explicitly overriding the configured default.",
@@ -863,7 +863,7 @@ export default function (pi: ExtensionAPI) {
 			domainFilter: Type.Optional(Type.Array(Type.String(), { description: "Limit to domains (prefix with - to exclude)" })),
 			provider: Type.Optional(searchProviderSchema(`Search provider or non-empty list of allowed providers to search simultaneously; ${allPolicyDescription}; omit this field to use the configured provider, or use auto when none is configured`, allowedSearchProviders)),
 			proxy: Type.Optional(Type.String({
-				description: "http(s) or socks proxy URL (e.g. http://host:port or socks5h://host:port) used for every outbound request in this call (search APIs and content fetches). Node fetch ignores HTTP(S)_PROXY env vars, so set this (or `proxy` in web-search.json) when direct access is blocked; empty string forces direct access.",
+				description: "http(s) or socks proxy URL (e.g. http://host:port or socks5h://host:port) used for every outbound request in this call (search APIs and content fetches). Node fetch ignores HTTP(S)_PROXY env vars, so set this (or `proxy` in web-search-enhanced.json) when direct access is blocked; empty string forces direct access.",
 			})),
 		}),
 

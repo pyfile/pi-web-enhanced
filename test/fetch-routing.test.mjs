@@ -20,7 +20,7 @@ function cleanProviderEnv(root) {
 
 async function runExtract(config, { tinyfishFails = false } = {}) {
 	const root = await mkdtemp(join(tmpdir(), "pi-fetch-routing-"));
-	await writeFile(join(root, "web-search.json"), JSON.stringify(config) + "\n", "utf8");
+	await writeFile(join(root, "web-search-enhanced.json"), JSON.stringify(config) + "\n", "utf8");
 	const childEnv = cleanProviderEnv(root);
 	childEnv.TINYFISH_API_KEY = "tinyfish-test-key";
 
@@ -49,7 +49,7 @@ async function runExtract(config, { tinyfishFails = false } = {}) {
 
 async function runTypedExtract(config, contentType) {
 	const root = await mkdtemp(join(tmpdir(), "pi-fetch-routing-typed-"));
-	await writeFile(join(root, "web-search.json"), typeof config === "string" ? config : JSON.stringify(config) + "\n", "utf8");
+	await writeFile(join(root, "web-search-enhanced.json"), typeof config === "string" ? config : JSON.stringify(config) + "\n", "utf8");
 	const childEnv = cleanProviderEnv(root);
 	const childEnvWithKey = { ...childEnv, TINYFISH_API_KEY: "tinyfish-test-key" };
 	const child = spawnSync(process.execPath, ["--input-type=module"], {
@@ -108,7 +108,7 @@ test("blocked-page guidance names the remote-hosted opt-in for TinyFish and Quer
 	const output = await runExtract({});
 	assert.match(output.result.error, /Fallback options:/);
 	assert.match(output.result.error, /TinyFish and Querit are hosted services and are disabled for remote HTTP\(S\) targets/);
-	assert.match(output.result.error, /set fetchRouting\.allowRemoteHostedProviders to true in .*web-search\.json/);
+	assert.match(output.result.error, /set fetchRouting\.allowRemoteHostedProviders to true in .*web-search-enhanced\.json/);
 	assert.match(output.result.error, /target URLs are fetched through their infrastructure/);
 	assert.doesNotMatch(output.result.error, /Enable the keyless Jina Reader fallback/);
 });
@@ -128,12 +128,12 @@ test("disabled PDF extraction does not fall through to hosted providers", async 
 test("malformed config returns a parse error without hosted fallback", async () => {
 	const output = await runTypedExtract("{", "image/png");
 	assert.deepEqual(output.calls, []);
-	assert.match(output.result.error, /Failed to parse .*web-search\.json/);
+	assert.match(output.result.error, /Failed to parse .*web-search-enhanced\.json/);
 });
 
 test("the image gate reports a malformed config instead of silently enabling images", async () => {
 	const root = await mkdtemp(join(tmpdir(), "pi-feature-config-"));
-	await writeFile(join(root, "web-search.json"), "{", "utf8");
+	await writeFile(join(root, "web-search-enhanced.json"), "{", "utf8");
 	const child = spawnSync(process.execPath, ["--input-type=module"], {
 		input: `
 			process.env.PI_CODING_AGENT_DIR = ${JSON.stringify(root)};
@@ -148,12 +148,12 @@ test("the image gate reports a malformed config instead of silently enabling ima
 	});
 	assert.equal(child.status, 0, child.stderr);
 	const output = JSON.parse(child.stdout.trim());
-	assert.match(output.parseError, /Failed to parse .*web-search\.json/);
+	assert.match(output.parseError, /Failed to parse .*web-search-enhanced\.json/);
 });
 
 test("TinyFish is disabled for remote URLs without hosted-provider opt-in", async () => {
 	const root = await mkdtemp(join(tmpdir(), "pi-fetch-routing-tinyfish-gate-"));
-	await writeFile(join(root, "web-search.json"), JSON.stringify({ tinyfishApiKey: "test-key", fetchRouting: { providers: ["tinyfish", "http"] } }) + "\n", "utf8");
+	await writeFile(join(root, "web-search-enhanced.json"), JSON.stringify({ tinyfishApiKey: "test-key", fetchRouting: { providers: ["tinyfish", "http"] } }) + "\n", "utf8");
 	const childEnv = cleanProviderEnv(root);
 	const child = spawnSync(process.execPath, ["--input-type=module"], {
 		input: `
@@ -181,7 +181,7 @@ test("TinyFish is disabled for remote URLs without hosted-provider opt-in", asyn
 
 test("hosted providers cannot bypass redirect policy validation", async () => {
 	const root = await mkdtemp(join(tmpdir(), "pi-fetch-routing-redirect-"));
-	await writeFile(join(root, "web-search.json"), JSON.stringify({ fetchRouting: { providers: ["tinyfish"], allowRemoteHostedProviders: true } }) + "\n", "utf8");
+	await writeFile(join(root, "web-search-enhanced.json"), JSON.stringify({ fetchRouting: { providers: ["tinyfish"], allowRemoteHostedProviders: true } }) + "\n", "utf8");
 	const childEnv = { ...process.env, PI_CODING_AGENT_DIR: root, HOME: root, USERPROFILE: root };
 	const child = spawnSync(process.execPath, ["--input-type=module"], {
 		input: `
@@ -217,7 +217,7 @@ const cloudflareChallengePage = `<!DOCTYPE html><html lang="en-US"><head><title>
 
 async function runChallengeExtract(config, { body, headers = {}, mode } = {}) {
 	const root = await mkdtemp(join(tmpdir(), "pi-fetch-routing-challenge-"));
-	await writeFile(join(root, "web-search.json"), JSON.stringify(config) + "\n", "utf8");
+	await writeFile(join(root, "web-search-enhanced.json"), JSON.stringify(config) + "\n", "utf8");
 	const child = spawnSync(process.execPath, ["--input-type=module"], {
 		input: `
 			const calls = [];

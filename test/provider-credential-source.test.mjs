@@ -16,7 +16,7 @@ async function createHome(config) {
 	const home = await mkdtemp(join(tmpdir(), "pi-web-access-credential-source-"));
 	const agentDir = join(home, "agent");
 	await mkdir(agentDir, { recursive: true });
-	await writeFile(join(agentDir, "web-search.json"), JSON.stringify(config) + "\n", "utf8");
+	await writeFile(join(agentDir, "web-search-enhanced.json"), JSON.stringify(config) + "\n", "utf8");
 	return { home, agentDir };
 }
 

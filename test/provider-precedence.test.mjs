@@ -16,7 +16,7 @@ async function createConfig(config = {
 	const agentDir = join(root, "agent-dir");
 	await mkdir(agentDir, { recursive: true });
 	if (config) {
-		await writeFile(join(agentDir, "web-search.json"), JSON.stringify(config) + "\n", "utf8");
+		await writeFile(join(agentDir, "web-search-enhanced.json"), JSON.stringify(config) + "\n", "utf8");
 	}
 	return agentDir;
 }
@@ -140,7 +140,7 @@ test("configured explicit-only SerpApi fails instead of falling back", async () 
 	assert.doesNotMatch(result.content[0].text, /Unexpected fallback fetch/);
 });
 
-test("legacy Gemini Web profile config does not block unrelated configured providers", async () => {
+test("legacy browser cookie config does not block unrelated configured providers", async () => {
 	const calls = runTool(await createConfig({
 		provider: "tavily",
 		tavilyApiKey: "tavily-test-key",
@@ -154,7 +154,7 @@ test("malformed config root fails with an explicit object-shape error", async ()
 	const root = await mkdtemp(join(tmpdir(), "pi-web-access-invalid-config-root-"));
 	const agentDir = join(root, "agent-dir");
 	await mkdir(agentDir, { recursive: true });
-	await writeFile(join(agentDir, "web-search.json"), "null\n", "utf8");
+	await writeFile(join(agentDir, "web-search-enhanced.json"), "null\n", "utf8");
 
 	const child = spawnSync(process.execPath, ["--input-type=module"], {
 		input: `
@@ -177,7 +177,7 @@ test("malformed config root fails with an explicit object-shape error", async ()
 		env: { ...process.env, PI_CODING_AGENT_DIR: agentDir, OPENAI_API_KEY: "openai-test-key" },
 	});
 	assert.notEqual(child.status, 0);
-	assert.match(child.stderr, /Invalid config in .*web-search\.json: expected a JSON object/);
+	assert.match(child.stderr, /Invalid config in .*web-search-enhanced\.json: expected a JSON object/);
 });
 
 test("non-curated search stops after caller cancellation", async () => {
