@@ -3,3 +3,26 @@ bun.lock
 .pi/
 .pi-subagents/
 dist/
+
+# Editor / OS noise
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# AI agent local state and scratch output
+.codebuddy/
+.claude/
+*.tsbuildinfo
+*.tmp
+
+# Test and coverage output
+coverage/
+.nyc_output/
+test-results/
+*.log
+
+# Packed artifacts and local caches
+*.tgz
+.cache/
