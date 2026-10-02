@@ -8,11 +8,9 @@ import { test } from "node:test";
 const indexUrl = new URL("../index.ts", import.meta.url).href;
 
 test("web_search bounds batch concurrency and preserves query order", async () => {
-	const home = await mkdtemp(join(tmpdir(), "pi-web-access-concurrency-"));
+	const home = await mkdtemp(join(tmpdir(), "pi-web-enhanced-concurrency-"));
 	await writeFile(join(home, "web-search.json"), JSON.stringify({
-		xcrawlApiKey: "xc-test-key",
-		autoOpenBrowser: false,
-		curatorTimeoutSeconds: 1,
+		serpapiApiKey: "serpapi-test-key",
 	}) + "\n", "utf8");
 	const childEnv = { ...process.env, PI_CODING_AGENT_DIR: home };
 	for (const key of [
@@ -29,8 +27,8 @@ test("web_search bounds batch concurrency and preserves query order", async () =
 			let started = [];
 			let completed = [];
 			const delays = new Map([["q1", 90], ["q2", 70], ["q3", 50], ["q4", 30], ["q5", 10]]);
-			globalThis.fetch = async (_url, init) => {
-				const query = JSON.parse(init.body).q;
+			globalThis.fetch = async (url) => {
+				const query = new URL(String(url)).searchParams.get("q");
 				started.push(query);
 				active++;
 				maxActive = Math.max(maxActive, active);
@@ -38,8 +36,6 @@ test("web_search bounds batch concurrency and preserves query order", async () =
 				active--;
 				completed.push(query);
 				return new Response(JSON.stringify({
-					search_metadata: { status: "completed" },
-					total_credits_used: 1,
 					organic_results: [{ position: 1, title: query, link: "https://example.com/" + query, snippet: query }],
 				}), { status: 200 });
 			};
@@ -53,38 +49,13 @@ test("web_search bounds batch concurrency and preserves query order", async () =
 			const updates = [];
 			const rawResult = await webSearch.execute(
 				"concurrency-test",
-				{ queries: ["q1", "q2", "q3", "q4", "q5"], provider: "xcrawl", workflow: "none" },
+				{ queries: ["q1", "q2", "q3", "q4", "q5"], provider: "serpapi" },
 				undefined,
 				update => updates.push(update.details),
 			);
 			const raw = { maxActive, started, completed, updates, text: rawResult.content[0].text };
-
-			active = 0;
-			maxActive = 0;
-			started = [];
-			completed = [];
-			const curatedResult = await webSearch.execute(
-				"curator-concurrency-test",
-				{ queries: ["q1", "q2", "q3", "q4", "q5"], provider: "xcrawl", workflow: "summary-review" },
-				undefined,
-				undefined,
-				{
-					hasUI: true,
-					model: undefined,
-					modelRegistry: { getAvailable() { return []; }, find() { return undefined; } },
-					cwd: process.cwd(),
-					isProjectTrusted() { return true; },
-					ui: { notify() {} },
-				},
-			);
-			const curated = {
-				maxActive,
-				started,
-				completed,
-				queries: curatedResult.details.curatedQueries.map(entry => entry.query),
-			};
 			const queriesDescription = webSearch.parameters.properties.queries.description;
-			console.log(JSON.stringify({ raw, curated, queriesDescription }));
+			console.log(JSON.stringify({ raw, queriesDescription }));
 		`,
 		encoding: "utf8",
 		env: childEnv,
@@ -92,7 +63,7 @@ test("web_search bounds batch concurrency and preserves query order", async () =
 	});
 
 	assert.equal(child.status, 0, child.stderr);
-	const { raw, curated, queriesDescription } = JSON.parse(child.stdout.trim());
+	const { raw, queriesDescription } = JSON.parse(child.stdout.trim());
 	assert.equal(raw.maxActive, 3);
 	assert.deepEqual(raw.started, ["q1", "q2", "q3", "q4", "q5"]);
 	assert.notDeepEqual(raw.completed, raw.started);
@@ -103,9 +74,5 @@ test("web_search bounds batch concurrency and preserves query order", async () =
 		previous = position;
 	}
 	assert.equal(raw.updates.at(-1).progress, 1);
-	assert.equal(curated.maxActive, 3);
-	assert.deepEqual(curated.started, raw.started);
-	assert.notDeepEqual(curated.completed, curated.started);
-	assert.deepEqual(curated.queries, raw.started);
 	assert.match(queriesDescription, /concurrently \(up to three at a time\)/);
 });

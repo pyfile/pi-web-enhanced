@@ -132,38 +132,36 @@ function registerSourceCheck() {
   return { tool: tools.find((candidate) => candidate.name === "source_check"), entries };
 }
 
-test("source_check executes a successful OpenAI provider response with runtime context", async () => {
+test("source_check executes a successful provider response with runtime context", async () => {
   const previousFetch = globalThis.fetch;
-  const previousKey = process.env.OPENAI_API_KEY;
-  process.env.OPENAI_API_KEY = "source-check-test-key";
+  const previousKey = process.env.TAVILY_API_KEY;
+  process.env.TAVILY_API_KEY = "source-check-test-key";
   globalThis.fetch = async (url) => {
-    assert.equal(String(url), "https://api.openai.com/v1/responses");
+    assert.equal(String(url), "https://api.tavily.com/search");
     return new Response(JSON.stringify({
-      output: [
-        { type: "web_search_call", action: { sources: [{ title: "API docs", url: "https://docs.example.com/api" }] } },
-        { type: "message", content: [{ type: "output_text", text: "The API supports streaming responses." }] },
-      ],
+      answer: "The API supports streaming responses.",
+      results: [{ title: "API docs", url: "https://docs.example.com/api", content: "snippet" }],
     }), { status: 200 });
   };
   try {
     const { tool, entries } = registerSourceCheck();
-    const response = await tool.execute("call", { claim: "API supports streaming responses", provider: "openai" }, undefined, undefined, { modelRegistry: {} });
+    const response = await tool.execute("call", { claim: "API supports streaming responses", provider: "tavily" }, undefined, undefined, { modelRegistry: {} });
     assert.equal(response.details.sourceCount, 1);
-    assert.equal(response.details.passageCount, 0);
+    assert.equal(response.details.passageCount, 1);
     assert.equal(entries[0].type, "web-search-results");
   } finally {
     globalThis.fetch = previousFetch;
-    if (previousKey === undefined) delete process.env.OPENAI_API_KEY;
-    else process.env.OPENAI_API_KEY = previousKey;
+    if (previousKey === undefined) delete process.env.TAVILY_API_KEY;
+    else process.env.TAVILY_API_KEY = previousKey;
   }
 });
 
 test("source_check stops on cancellation instead of continuing queries", async () => {
   const previousFetch = globalThis.fetch;
-  const previousKey = process.env.OPENAI_API_KEY;
+  const previousKey = process.env.TAVILY_API_KEY;
   let calls = 0;
   const controller = new AbortController();
-  process.env.OPENAI_API_KEY = "source-check-test-key";
+  process.env.TAVILY_API_KEY = "source-check-test-key";
   globalThis.fetch = async () => {
     calls++;
     controller.abort();
@@ -171,37 +169,38 @@ test("source_check stops on cancellation instead of continuing queries", async (
   };
   try {
     const { tool } = registerSourceCheck();
-    const response = await tool.execute("call", { claim: "cancel this", queries: ["first", "second"], provider: "openai" }, controller.signal, undefined, { modelRegistry: {} });
+    const response = await tool.execute("call", { claim: "cancel this", queries: ["first", "second"], provider: "tavily" }, controller.signal, undefined, { modelRegistry: {} });
     assert.equal(calls, 1);
     assert.equal(response.details.sourceCount, 0);
   } finally {
     globalThis.fetch = previousFetch;
-    if (previousKey === undefined) delete process.env.OPENAI_API_KEY;
-    else process.env.OPENAI_API_KEY = previousKey;
+    if (previousKey === undefined) delete process.env.TAVILY_API_KEY;
+    else process.env.TAVILY_API_KEY = previousKey;
   }
 });
 
 test("source_check retains a rejected page fetch in the artifact", async () => {
   const previousFetch = globalThis.fetch;
-  const previousKey = process.env.OPENAI_API_KEY;
-  process.env.OPENAI_API_KEY = "source-check-test-key";
+  const previousKey = process.env.TAVILY_API_KEY;
+  process.env.TAVILY_API_KEY = "source-check-test-key";
   globalThis.fetch = async (url) => {
-    if (String(url) === "https://api.openai.com/v1/responses") {
+    if (String(url) === "https://api.tavily.com/search") {
       return new Response(JSON.stringify({
-        output: [{ type: "web_search_call", action: { sources: [{ title: "API docs", url: "https://example.com/api" }] } }],
+        answer: "",
+        results: [{ title: "API docs", url: "https://example.com/api", content: "snippet" }],
       }), { status: 200 });
     }
     throw new Error("fetch rejected");
   };
   try {
     const { tool } = registerSourceCheck();
-    const response = await tool.execute("call", { claim: "API docs", provider: "openai", fetchContent: true }, undefined, undefined, { modelRegistry: {} });
+    const response = await tool.execute("call", { claim: "API docs", provider: "tavily", fetchContent: true }, undefined, undefined, { modelRegistry: {} });
     assert.equal(response.details.sourceCount, 1);
     assert.match(response.details.artifact.sources[0].fetch_error, /^fetch rejected/);
   } finally {
     globalThis.fetch = previousFetch;
-    if (previousKey === undefined) delete process.env.OPENAI_API_KEY;
-    else process.env.OPENAI_API_KEY = previousKey;
+    if (previousKey === undefined) delete process.env.TAVILY_API_KEY;
+    else process.env.TAVILY_API_KEY = previousKey;
   }
 });
 

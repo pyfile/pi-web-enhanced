@@ -8,8 +8,6 @@ import { test } from "node:test";
 const tinyfishModuleUrl = new URL("../tinyfish.ts", import.meta.url).href;
 const searchModuleUrl = new URL("../gemini-search.ts", import.meta.url).href;
 const extractModuleUrl = new URL("../extract.ts", import.meta.url).href;
-const curatorPageModuleUrl = new URL("../curator-page.ts", import.meta.url)
-	.href;
 
 const PROVIDER_ENV_KEYS = [
 	"OPENAI_API_KEY",
@@ -303,7 +301,7 @@ test("TinyFish API errors redact credentials", async () => {
 	assert.match(output.error, /\[redacted\]/i);
 });
 
-test("fetch_content uses TinyFish before Parallel after local and Jina extraction fail", async () => {
+test("fetch_content uses TinyFish after local extraction fails", async () => {
 	const home = await createHome({
 		fetchRouting: { allowRemoteHostedProviders: true },
 	});
@@ -316,14 +314,12 @@ test("fetch_content uses TinyFish before Parallel after local and Jina extractio
 			if (urlText === "https://example.com/app") {
 				return new Response("<html><body><script></script><script></script><script></script><script></script>Loading</body></html>", { status: 200, headers: { "content-type": "text/html" } });
 			}
-			if (urlText.startsWith("https://r.jina.ai/")) return new Response("", { status: 503 });
 			if (urlText === "https://api.fetch.tinyfish.ai") {
 				return new Response(JSON.stringify({
 					results: [{ url: "https://example.com/app", final_url: "https://example.com/app", title: "Rendered", text: "# TinyFish rendered content", format: "markdown" }],
 					errors: [],
 				}), { status: 200 });
 			}
-			if (urlText === "https://api.parallel.ai/v1/extract") throw new Error("Parallel must not run");
 			throw new Error("Unexpected fetch " + urlText);
 		};
 		const { extractContent } = await import(${JSON.stringify(extractModuleUrl)});
@@ -335,7 +331,6 @@ test("fetch_content uses TinyFish before Parallel after local and Jina extractio
 			HOME: home,
 			USERPROFILE: home,
 			TINYFISH_API_KEY: "synthetic-tinyfish-test-key",
-			PARALLEL_API_KEY: "synthetic-parallel-test-key",
 		},
 	);
 
@@ -343,7 +338,6 @@ test("fetch_content uses TinyFish before Parallel after local and Jina extractio
 	const output = JSON.parse(child.stdout.trim());
 	assert.deepEqual(output.calls, [
 		"https://example.com/app",
-		"https://r.jina.ai/https://example.com/app",
 		"https://api.fetch.tinyfish.ai",
 	]);
 	assert.deepEqual(output.result, {
@@ -384,34 +378,3 @@ test("configured searchRouting can select TinyFish", async () => {
 	assert.equal(output.results[0].title, "Routed");
 });
 
-test("curator page exposes TinyFish as a manual provider", async () => {
-	const { generateCuratorPage } = await import(curatorPageModuleUrl);
-	const page = generateCuratorPage(
-		["tinyfish query"],
-		"session-token",
-		20,
-		{
-			all: false,
-			openai: false,
-			brave: false,
-			parallel: false,
-			tinyfish: true,
-			tavily: false,
-			serpdive: false,
-			brightdata: false,
-			searxng: false,
-			perplexity: false,
-			exa: false,
-			gemini: false,
-			kimi: false,
-			anysearch: false,
-		},
-		"tinyfish",
-		"tinyfish",
-		[],
-		null,
-	);
-	assert.match(page, /data-provider="tinyfish"/);
-	assert.match(page, />TinyFish<\/button>/);
-	assert.match(page, /provider-tag\.provider-tinyfish/);
-});

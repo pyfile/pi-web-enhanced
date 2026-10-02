@@ -6,23 +6,13 @@ import { extractRSCContent } from "./rsc-extract.ts";
 import { extractPDFToMarkdown, isPDF, loadPDFConfig } from "./pdf-extract.ts";
 import { extractGitHub } from "./github-extract.ts";
 import { extractGitHubIssuePr } from "./github-issue-pr.ts";
-import { isYouTubeURL, isYouTubeEnabled, extractYouTube, extractYouTubeFrame, extractYouTubeFrames, getYouTubeStreamInfo } from "./youtube-extract.ts";
 import { CredentialResolutionError } from "./credential-source.ts";
-import { extractWithUrlContext, extractWithGeminiWeb } from "./gemini-url-context.ts";
-import { extractWithParallel, isParallelAvailable } from "./parallel.ts";
-import { extractWithParallelMcp } from "./parallel-mcp.ts";
 import { extractWithTinyFish, isTinyFishAvailable } from "./tinyfish.ts";
-import { extractWithSearch1API, isSearch1APIAvailable } from "./search1api.ts";
 import { extractWithQuerit, isQueritAvailable } from "./querit.ts";
-import { extractWithKagi, isKagiExtractAvailable } from "./kagi.ts";
-import { extractWithOllama, isOllamaFetchAvailable } from "./ollama.ts";
 import { extractWithFirecrawl, isFirecrawlAvailable } from "./firecrawl.ts";
-import { extractWithCrawl4ai, isCrawl4aiAvailable } from "./crawl4ai.ts";
-import { extractWithBrightDataUnlocker, isBrightDataUnlockerAvailable } from "./brightdata-unlocker.ts";
-import { isVideoFile, extractVideo, extractVideoFrame, getLocalVideoDuration } from "./video-extract.ts";
 import { appendDeclaredWebLinks, discoverDeclaredWebLinks, type DeclaredWebLink } from "./declared-web-links.ts";
 import { fetchRemoteUrl, loadFetchContentDomainPolicy, loadSsrfConfig, validateRemoteUrl, type DomainPolicy, type Lookup, type SsrfConfig } from "./ssrf-protection.ts";
-import { formatSeconds, getWebSearchConfigPath, type ProxiedRequestInit } from "./utils.ts";
+import { getWebSearchConfigPath, type ProxiedRequestInit } from "./utils.ts";
 import { isImageEnabled } from "./feature-config.ts";
 import { assertAuthFetchUrl, authFetchRedirectGuard, type AuthFetchProfile } from "./auth-fetch.ts";
 import { getBrowserCookiesForHosts, getLastBrowserCookieDiagnostic } from "./chrome-cookies.ts";
@@ -68,11 +58,14 @@ function loadFetchTimeoutMs(): number {
 const NON_RECOVERABLE_ERRORS = ["Unsupported content type", "Response too large", "PDF extraction is disabled", "Image fetching is disabled"];
 const MIN_USEFUL_CONTENT = 500;
 const SUPPORTED_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
-const FETCH_PROVIDERS = ["http", "firecrawl", "crawl4ai", "jina", "tinyfish", "search1api", "querit", "kagi", "ollama", "parallel", "parallel-mcp", "brightdata", "gemini"] as const;
+const FETCH_PROVIDERS = ["http", "firecrawl", "tinyfish", "querit"] as const;
 type FetchProvider = typeof FETCH_PROVIDERS[number];
 type FetchRouting = { providers: FetchProvider[]; allowRemoteHostedProviders: boolean };
-const DEFAULT_FETCH_PROVIDER_ORDER: FetchProvider[] = ["http", "firecrawl", "crawl4ai", "jina", "tinyfish", "search1api", "querit", "kagi", "ollama", "parallel", "brightdata", "gemini"];
-const REMOTE_HOSTED_FETCH_PROVIDERS = new Set<FetchProvider>(["jina", "tinyfish", "search1api", "querit", "kagi", "ollama", "parallel", "parallel-mcp", "brightdata", "gemini"]);
+const DEFAULT_FETCH_PROVIDER_ORDER: FetchProvider[] = ["http", "firecrawl", "tinyfish", "querit"];
+// Hosted services perform their own fetch, so they can see a different redirect
+// chain than the local SSRF gate. tinyfish and querit are gated behind
+// fetchRouting.allowRemoteHostedProviders for remote HTTP(S) targets.
+const REMOTE_HOSTED_FETCH_PROVIDERS = new Set<FetchProvider>(["tinyfish", "querit"]);
 
 function isDefuddleConsoleError(args: Parameters<typeof console.error>): boolean {
 	const prefix = args[0];
@@ -290,20 +283,6 @@ function notFoundGuidance(result: ExtractedContent, toolNames?: RegisteredToolNa
 }
 
 
-/** Fallback-list hint for the keyless Jina Reader. Returns null when Jina
- * already ran for this fetch, and otherwise names only the config change still
- * missing, so users keep their existing or default provider order. */
-function jinaReaderGuidance(routing: FetchRouting, providerOrder: FetchProvider[], needsRemoteOptIn: boolean): string | null {
-	if (providerOrder.includes("jina")) return null;
-	const privacy = "target URLs are fetched through Jina's infrastructure";
-	const optInCaveat = "this also allows the other hosted providers in your fetch provider order";
-	if (routing.providers.includes("jina")) {
-		return `  • Enable the keyless Jina Reader fallback: set fetchRouting.allowRemoteHostedProviders to true in ${WEB_SEARCH_CONFIG_PATH} (Jina is already in your fetch provider order; ${optInCaveat}; ${privacy})`;
-	}
-	return needsRemoteOptIn
-		? `  • Enable the keyless Jina Reader fallback: add "jina" to your existing fetchRouting.providers and set fetchRouting.allowRemoteHostedProviders to true in ${WEB_SEARCH_CONFIG_PATH} (${optInCaveat}; ${privacy})`
-		: `  • Enable the keyless Jina Reader fallback: add "jina" to your existing fetchRouting.providers in ${WEB_SEARCH_CONFIG_PATH} (${privacy})`;
-}
 function abortedResult(url: string): ExtractedContent {
 	return { url, title: "", content: "", error: "Aborted" };
 }
@@ -324,23 +303,12 @@ function getTurndown(): Promise<TurndownService> {
 
 const fetchLimit = pLimit(CONCURRENT_LIMIT);
 
-export interface VideoFrame {
-	data: string;
-	mimeType: string;
-	timestamp: string;
-}
-
-export type FrameData = { data: string; mimeType: string };
-export type FrameResult = FrameData | { error: string };
-
 export interface ExtractedContent {
 	url: string;
 	title: string;
 	content: string;
 	error: string | null;
 	thumbnail?: { data: string; mimeType: string };
-	frames?: VideoFrame[];
-	duration?: number;
 	mimeType?: string;
 	status?: number;
 }
@@ -351,9 +319,6 @@ export interface ExtractOptions {
 	timeoutMs?: number;
 	forceClone?: boolean;
 	prompt?: string;
-	timestamp?: string;
-	frames?: number;
-	model?: string;
 	mode?: "readable" | "raw" | "answer";
 	answerModel?: string;
 	authFetchProfile?: AuthFetchProfile;
@@ -364,161 +329,9 @@ export interface ExtractOptions {
 	lookup?: Lookup;
 }
 
-/** Resolve the direct HTTP/Jina fetch budget, with a per-call override taking precedence. */
+/** Resolve the direct HTTP fetch budget, with a per-call override taking precedence. */
 export function resolveFetchTimeoutMs(options?: Pick<ExtractOptions, "timeoutMs">): number {
 	return options?.timeoutMs ?? loadFetchTimeoutMs();
-}
-
-const JINA_READER_BASE = "https://r.jina.ai/";
-
-async function extractWithJinaReader(
-	url: string,
-	timeoutMs: number,
-	signal?: AbortSignal,
-	lookup?: Lookup,
-): Promise<ExtractedContent | null> {
-	const jinaUrl = JINA_READER_BASE + url;
-
-	const activityId = activityMonitor.logStart({ type: "api", query: `jina: ${url}` });
-
-	try {
-		const ssrf = loadSsrfConfig();
-		const domainPolicy = loadFetchContentDomainPolicy();
-		await validateRemoteUrl(url, {
-			allowRanges: ssrf.allowRanges,
-			trustEnvProxy: ssrf.trustEnvProxy,
-			domainPolicy,
-			...(lookup ? { lookup } : {}),
-		});
-		const res = await fetch(jinaUrl, {
-			headers: {
-				"Accept": "text/markdown",
-				"X-No-Cache": "true",
-			},
-			signal: AbortSignal.any([
-				AbortSignal.timeout(timeoutMs),
-				...(signal ? [signal] : []),
-			]),
-		});
-
-		if (!res.ok) {
-			activityMonitor.logComplete(activityId, res.status);
-			return null;
-		}
-
-		const content = await res.text();
-		activityMonitor.logComplete(activityId, res.status);
-
-		const contentStart = content.indexOf("Markdown Content:");
-		if (contentStart < 0) {
-			return null;
-		}
-
-		const markdownPart = content.slice(contentStart + 17).trim(); // 17 = "Markdown Content:".length
-
-		// Check for failed JS rendering or minimal content
-		if (markdownPart.length < 100 ||
-			markdownPart.startsWith("Loading...") ||
-			markdownPart.startsWith("Please enable JavaScript")) {
-			return null;
-		}
-
-		const title = extractHeadingTitle(markdownPart) ?? (new URL(url).pathname.split("/").pop() || url);
-		return { url, title, content: markdownPart, error: null };
-	} catch (err) {
-		const message = err instanceof Error ? err.message : String(err);
-		if (message.toLowerCase().includes("abort")) {
-			activityMonitor.logComplete(activityId, 0);
-		} else {
-			activityMonitor.logError(activityId, message);
-		}
-		return null;
-	}
-}
-
-function parseTimestamp(ts: string): number | null {
-	const num = Number(ts);
-	if (!isNaN(num) && num >= 0) return Math.floor(num);
-	const parts = ts.split(":").map(Number);
-	if (parts.some(p => isNaN(p) || p < 0)) return null;
-	if (parts.length === 3) return Math.floor(parts[0] * 3600 + parts[1] * 60 + parts[2]);
-	if (parts.length === 2) return Math.floor(parts[0] * 60 + parts[1]);
-	return null;
-}
-
-type TimestampSpec = { type: "single"; seconds: number } | { type: "range"; start: number; end: number };
-
-function parseTimestampSpec(ts: string): TimestampSpec | null {
-	const dashIdx = ts.indexOf("-", 1);
-	if (dashIdx > 0) {
-		const start = parseTimestamp(ts.slice(0, dashIdx));
-		const end = parseTimestamp(ts.slice(dashIdx + 1));
-		if (start !== null && end !== null && end > start) return { type: "range", start, end };
-	}
-	const seconds = parseTimestamp(ts);
-	return seconds !== null ? { type: "single", seconds } : null;
-}
-
-const DEFAULT_RANGE_FRAMES = 6;
-const MIN_FRAME_INTERVAL = 5;
-
-function computeRangeTimestamps(start: number, end: number, maxFrames: number = DEFAULT_RANGE_FRAMES): number[] {
-	if (maxFrames <= 1) return [start];
-	const duration = end - start;
-	const idealInterval = duration / (maxFrames - 1);
-	if (idealInterval < MIN_FRAME_INTERVAL) {
-		const timestamps: number[] = [];
-		for (let t = start; t <= end && timestamps.length < maxFrames; t += MIN_FRAME_INTERVAL) {
-			timestamps.push(t);
-		}
-		return timestamps;
-	}
-	return Array.from({ length: maxFrames }, (_, i) => Math.round(start + i * idealInterval));
-}
-
-function buildFrameResult(
-	url: string, label: string, requestedCount: number,
-	frames: VideoFrame[], error: string | null, duration?: number,
-): ExtractedContent {
-	if (frames.length === 0) {
-		const msg = error ?? "Frame extraction failed";
-		return { url, title: `Frames ${label} (0/${requestedCount})`, content: msg, error: msg };
-	}
-	return {
-		url,
-		title: `Frames ${label} (${frames.length}/${requestedCount})`,
-		content: `${frames.length} frames extracted from ${label}`,
-		error: null,
-		frames,
-		...(duration !== undefined ? { duration } : {}),
-	};
-}
-
-async function extractLocalFrames(
-	filePath: string, timestamps: number[],
-): Promise<{ frames: VideoFrame[]; error: string | null }> {
-	const results = await Promise.all(timestamps.map(async (t) => {
-		const frame = await extractVideoFrame(filePath, t);
-		if ("error" in frame) return { error: frame.error };
-		return { ...frame, timestamp: formatSeconds(t) };
-	}));
-	const frames = results.filter((f): f is VideoFrame => "data" in f);
-	const firstError = results.find((f): f is { error: string } => "error" in f);
-	return { frames, error: frames.length === 0 && firstError ? firstError.error : null };
-}
-
-type LocalVideoInfoResult =
-	| { status: "video"; info: NonNullable<ReturnType<typeof isVideoFile>> }
-	| { status: "not-video" }
-	| { status: "invalid"; error: string };
-
-function safeVideoInfo(url: string): LocalVideoInfoResult {
-	try {
-		const info = isVideoFile(url);
-		return info ? { status: "video", info } : { status: "not-video" };
-	} catch (err) {
-		return { status: "invalid", error: errorMessage(err) };
-	}
 }
 
 export async function extractContent(
@@ -560,160 +373,6 @@ export async function extractContent(
 		}
 	}
 
-	if (options?.frames || options?.timestamp) {
-		const disabled = imageGateError();
-		if (disabled) return { url, title: "", content: "", error: disabled };
-	}
-
-	if (options?.frames && !options.timestamp) {
-		const frameCount = options.frames;
-		const ytInfo = isYouTubeURL(url);
-		if (ytInfo.isYouTube && ytInfo.videoId) {
-			const streamInfo = await getYouTubeStreamInfo(ytInfo.videoId);
-			if ("error" in streamInfo) {
-				return { url, title: "Frames", content: streamInfo.error, error: streamInfo.error };
-			}
-			if (streamInfo.duration === null) {
-				const error = "Cannot determine video duration. Use a timestamp range instead.";
-				return { url, title: "Frames", content: error, error };
-			}
-			const dur = Math.floor(streamInfo.duration);
-			const timestamps = computeRangeTimestamps(0, dur, frameCount);
-			const result = await extractYouTubeFrames(ytInfo.videoId, timestamps, streamInfo);
-			const label = `${formatSeconds(0)}-${formatSeconds(dur)}`;
-			return buildFrameResult(url, label, timestamps.length, result.frames, result.error, streamInfo.duration);
-		}
-
-		const localVideo = safeVideoInfo(url);
-		if (localVideo.status === "invalid") {
-			return { url, title: "", content: "", error: localVideo.error };
-		}
-		if (localVideo.status === "video") {
-			const durationResult = await getLocalVideoDuration(localVideo.info.absolutePath);
-			if (typeof durationResult !== "number") {
-				return { url, title: "Frames", content: durationResult.error, error: durationResult.error };
-			}
-			const dur = Math.floor(durationResult);
-			const timestamps = computeRangeTimestamps(0, dur, frameCount);
-			const result = await extractLocalFrames(localVideo.info.absolutePath, timestamps);
-			const label = `${formatSeconds(0)}-${formatSeconds(dur)}`;
-			return buildFrameResult(url, label, timestamps.length, result.frames, result.error, durationResult);
-		}
-
-		return { url, title: "", content: "", error: "Frame extraction only works with YouTube and local video files" };
-	}
-
-	if (options?.timestamp) {
-		const spec = parseTimestampSpec(options.timestamp);
-		if (!spec) {
-			return {
-				url,
-				title: "",
-				content: "",
-				error: `Invalid timestamp format: "${options.timestamp}". Use "H:MM:SS", "MM:SS", "85", or "start-end".`,
-			};
-		}
-
-		const frameCount = options.frames;
-		const ytInfo = isYouTubeURL(url);
-		if (ytInfo.isYouTube && ytInfo.videoId) {
-			const streamInfo = await getYouTubeStreamInfo(ytInfo.videoId);
-			if ("error" in streamInfo) {
-				if (spec.type === "range") {
-					const label = `${formatSeconds(spec.start)}-${formatSeconds(spec.end)}`;
-					return { url, title: `Frames ${label}`, content: streamInfo.error, error: streamInfo.error };
-				}
-				if (frameCount) {
-					const end = spec.seconds + (frameCount - 1) * MIN_FRAME_INTERVAL;
-					const label = `${formatSeconds(spec.seconds)}-${formatSeconds(end)}`;
-					return { url, title: `Frames ${label}`, content: streamInfo.error, error: streamInfo.error };
-				}
-				return { url, title: `Frame at ${options.timestamp}`, content: streamInfo.error, error: streamInfo.error };
-			}
-
-			if (spec.type === "range") {
-				const label = `${formatSeconds(spec.start)}-${formatSeconds(spec.end)}`;
-				if (streamInfo.duration !== null && spec.end > streamInfo.duration) {
-					const error = `Timestamp ${formatSeconds(spec.end)} exceeds video duration (${formatSeconds(Math.floor(streamInfo.duration))})`;
-					return { url, title: `Frames ${label}`, content: error, error };
-				}
-				const timestamps = frameCount
-					? computeRangeTimestamps(spec.start, spec.end, frameCount)
-					: computeRangeTimestamps(spec.start, spec.end);
-				const result = await extractYouTubeFrames(ytInfo.videoId, timestamps, streamInfo);
-				return buildFrameResult(url, label, timestamps.length, result.frames, result.error, result.duration ?? undefined);
-			}
-
-			if (frameCount) {
-				const end = spec.seconds + (frameCount - 1) * MIN_FRAME_INTERVAL;
-				const label = `${formatSeconds(spec.seconds)}-${formatSeconds(end)}`;
-				if (streamInfo.duration !== null && end > streamInfo.duration) {
-					const error = `Timestamp ${formatSeconds(end)} exceeds video duration (${formatSeconds(Math.floor(streamInfo.duration))})`;
-					return { url, title: `Frames ${label}`, content: error, error };
-				}
-				const timestamps = computeRangeTimestamps(spec.seconds, end, frameCount);
-				const result = await extractYouTubeFrames(ytInfo.videoId, timestamps, streamInfo);
-				return buildFrameResult(url, label, timestamps.length, result.frames, result.error, result.duration ?? undefined);
-			}
-
-			if (streamInfo.duration !== null && spec.seconds > streamInfo.duration) {
-				const error = `Timestamp ${formatSeconds(spec.seconds)} exceeds video duration (${formatSeconds(Math.floor(streamInfo.duration))})`;
-				return { url, title: `Frame at ${options.timestamp}`, content: error, error };
-			}
-			const frame = await extractYouTubeFrame(ytInfo.videoId, spec.seconds, streamInfo);
-			if ("error" in frame) {
-				return { url, title: `Frame at ${options.timestamp}`, content: frame.error, error: frame.error };
-			}
-			return { url, title: `Frame at ${options.timestamp}`, content: `Video frame at ${options.timestamp}`, error: null, thumbnail: frame };
-		}
-
-		const localVideo = safeVideoInfo(url);
-		if (localVideo.status === "invalid") {
-			return { url, title: "", content: "", error: localVideo.error };
-		}
-		if (localVideo.status === "video") {
-			if (spec.type === "range") {
-				const timestamps = frameCount
-					? computeRangeTimestamps(spec.start, spec.end, frameCount)
-					: computeRangeTimestamps(spec.start, spec.end);
-				const result = await extractLocalFrames(localVideo.info.absolutePath, timestamps);
-				const label = `${formatSeconds(spec.start)}-${formatSeconds(spec.end)}`;
-				return buildFrameResult(url, label, timestamps.length, result.frames, result.error);
-			}
-
-			if (frameCount) {
-				const end = spec.seconds + (frameCount - 1) * MIN_FRAME_INTERVAL;
-				const timestamps = computeRangeTimestamps(spec.seconds, end, frameCount);
-				const result = await extractLocalFrames(localVideo.info.absolutePath, timestamps);
-				const label = `${formatSeconds(spec.seconds)}-${formatSeconds(end)}`;
-				return buildFrameResult(url, label, timestamps.length, result.frames, result.error);
-			}
-
-			const frame = await extractVideoFrame(localVideo.info.absolutePath, spec.seconds);
-			if ("error" in frame) {
-				return { url, title: `Frame at ${options.timestamp}`, content: frame.error, error: frame.error };
-			}
-			return { url, title: `Frame at ${options.timestamp}`, content: `Video frame at ${options.timestamp}`, error: null, thumbnail: frame };
-		}
-
-		return { url, title: "", content: "", error: "Timestamp extraction only works with YouTube and local video files" };
-	}
-
-	const localVideo = safeVideoInfo(url);
-	if (localVideo.status === "invalid") {
-		return { url, title: "", content: "", error: localVideo.error };
-	}
-	if (localVideo.status === "video") {
-		try {
-			const result = await extractVideo(localVideo.info, signal, options);
-			if (signal?.aborted) return abortedResult(url);
-			return result ?? { url, title: "", content: "", error: `Video analysis requires Gemini access. Either:\n  1. Sign into gemini.google.com in Chrome (free, uses cookies)\n  2. Set GEMINI_API_KEY in ${WEB_SEARCH_CONFIG_PATH}` };
-		} catch (err) {
-			if (isAbortError(err)) return abortedResult(url);
-			return { url, title: "", content: "", error: errorMessage(err) };
-		}
-	}
-
 	try {
 		if (!remoteUrl) new URL(url);
 	} catch (err) {
@@ -742,31 +401,6 @@ export async function extractContent(
 		if (isConfigParseError(err)) {
 			return { url, title: "", content: "", error: message };
 		}
-	}
-
-	const ytInfo = isYouTubeURL(url);
-	let youtubeEnabled = false;
-	try {
-		youtubeEnabled = isYouTubeEnabled();
-	} catch (err) {
-		return { url, title: "", content: "", error: errorMessage(err) };
-	}
-	if (ytInfo.isYouTube && youtubeEnabled) {
-		try {
-			const ytResult = await extractYouTube(url, signal, options?.prompt, options?.model);
-			if (ytResult) return ytResult;
-			if (signal?.aborted) return abortedResult(url);
-		} catch (err) {
-			const message = errorMessage(err);
-			if (isAbortError(err)) return abortedResult(url);
-			return { url, title: "", content: "", error: message };
-		}
-		return {
-			url,
-			title: "",
-			content: "",
-			error: "Could not extract YouTube video content. Sign into Google in a supported Chromium browser for automatic access, or set GEMINI_API_KEY.",
-		};
 	}
 
 	if (signal?.aborted) return abortedResult(url);
@@ -818,15 +452,8 @@ export async function extractContent(
 	};
 
 	let firecrawlError: string | null = null;
-	let crawl4aiError: string | null = null;
 	let tinyfishError: string | null = null;
-	let search1apiError: string | null = null;
 	let queritError: string | null = null;
-	let kagiError: string | null = null;
-	let ollamaError: string | null = null;
-	let parallelError: string | null = null;
-	let parallelMcpError: string | null = null;
-	let brightdataError: string | null = null;
 
 	if (remoteUrl && providerOrder[0] !== "http") {
 		const httpGateResult = await runHttpProvider();
@@ -861,31 +488,6 @@ export async function extractContent(
 			continue;
 		}
 
-		if (provider === "crawl4ai") {
-			try {
-				if (isCrawl4aiAvailable()) {
-					const ssrf = loadSsrfConfig();
-					const crawl4aiResult = await extractWithCrawl4ai(url, signal, {
-						timeoutMs: options?.timeoutMs,
-						...(options?.lookup ? { lookup: options.lookup } : {}),
-						ssrf,
-					});
-					if (crawl4aiResult) return withDeclaredLinks(crawl4aiResult);
-				}
-			} catch (err) {
-				if (signal?.aborted || isAbortException(err)) return abortedResult(url);
-				crawl4aiError = errorMessage(err);
-				if (isConfigParseError(err)) return parseErrorResult(crawl4aiError);
-			}
-			continue;
-		}
-
-		if (provider === "jina") {
-			const jinaResult = await extractWithJinaReader(url, fetchTimeoutMs, signal, options?.lookup);
-			if (jinaResult) return withDeclaredLinks(jinaResult);
-			continue;
-		}
-
 		if (provider === "tinyfish") {
 			try {
 				if (isTinyFishAvailable()) {
@@ -896,20 +498,6 @@ export async function extractContent(
 				if (isAbortError(err)) return abortedResult(url);
 				tinyfishError = errorMessage(err);
 				if (isConfigParseError(err)) return parseErrorResult(tinyfishError);
-			}
-			continue;
-		}
-
-		if (provider === "search1api") {
-			try {
-				if (isSearch1APIAvailable()) {
-					const search1apiResult = await extractWithSearch1API(url, signal, options);
-					if (search1apiResult) return withDeclaredLinks(search1apiResult);
-				}
-			} catch (err) {
-				if (isAbortError(err)) return abortedResult(url);
-				search1apiError = errorMessage(err);
-				if (isConfigParseError(err)) return parseErrorResult(search1apiError);
 			}
 			continue;
 		}
@@ -928,102 +516,6 @@ export async function extractContent(
 			continue;
 		}
 
-		if (provider === "kagi") {
-			try {
-				if (isKagiExtractAvailable()) {
-					const ssrf = loadSsrfConfig();
-					const kagiResult = await extractWithKagi(url, signal, {
-						timeoutMs: options?.timeoutMs,
-						...(options?.lookup ? { lookup: options.lookup } : {}),
-						ssrf,
-					});
-					if (kagiResult) return withDeclaredLinks(kagiResult);
-				}
-			} catch (err) {
-				if (isAbortError(err)) return abortedResult(url);
-				kagiError = errorMessage(err);
-				if (isConfigParseError(err)) return parseErrorResult(kagiError);
-			}
-			continue;
-		}
-
-		if (provider === "ollama") {
-			try {
-				if (isOllamaFetchAvailable()) {
-					const ssrf = loadSsrfConfig();
-					const ollamaResult = await extractWithOllama(url, signal, {
-						timeoutMs: options?.timeoutMs,
-						...(options?.lookup ? { lookup: options.lookup } : {}),
-						ssrf,
-					});
-					if (ollamaResult) return withDeclaredLinks(ollamaResult);
-				}
-			} catch (err) {
-				if (isAbortError(err)) return abortedResult(url);
-				ollamaError = errorMessage(err);
-				if (isConfigParseError(err)) return parseErrorResult(ollamaError);
-			}
-			continue;
-		}
-
-		if (provider === "parallel") {
-			try {
-				if (isParallelAvailable()) {
-					const parallelResult = await extractWithParallel(url, signal, options);
-					if (parallelResult) return withDeclaredLinks(parallelResult);
-				}
-			} catch (err) {
-				if (isAbortError(err)) return abortedResult(url);
-				parallelError = errorMessage(err);
-				if (isConfigParseError(err)) return parseErrorResult(parallelError);
-			}
-			continue;
-		}
-
-		if (provider === "parallel-mcp") {
-			try {
-				const parallelMcpResult = await extractWithParallelMcp(url, signal, options);
-				if (parallelMcpResult) return withDeclaredLinks(parallelMcpResult);
-			} catch (err) {
-				if (isAbortError(err)) return abortedResult(url);
-				parallelMcpError = errorMessage(err);
-				if (isConfigParseError(err)) return parseErrorResult(parallelMcpError);
-			}
-			continue;
-		}
-
-		if (provider === "brightdata") {
-			try {
-				if (isBrightDataUnlockerAvailable()) {
-					const ssrf = loadSsrfConfig();
-					const brightdataResult = await extractWithBrightDataUnlocker(url, signal, {
-						timeoutMs: options?.timeoutMs,
-						...(options?.lookup ? { lookup: options.lookup } : {}),
-						ssrf,
-					});
-					if (brightdataResult) return withDeclaredLinks(brightdataResult);
-				}
-			} catch (err) {
-				if (isAbortError(err)) return abortedResult(url);
-				brightdataError = errorMessage(err);
-				if (isConfigParseError(err)) return parseErrorResult(brightdataError);
-			}
-			continue;
-		}
-
-		if (provider === "gemini") {
-			let geminiResult: ExtractedContent | null = null;
-			try {
-				geminiResult = await extractWithUrlContext(url, signal)
-					?? await extractWithGeminiWeb(url, signal);
-			} catch (err) {
-				if (isAbortError(err)) return abortedResult(url);
-				if (err instanceof CredentialResolutionError || isConfigParseError(err)) {
-					return parseErrorResult(errorMessage(err));
-				}
-			}
-			if (geminiResult) return withDeclaredLinks(geminiResult);
-		}
 	}
 
 	if (signal?.aborted) return abortedResult(url);
@@ -1038,33 +530,20 @@ export async function extractContent(
 	}
 
 	const searchToolName = options?.toolNames?.webSearch;
-	const jinaHint = jinaReaderGuidance(fetchRouting, providerOrder, Boolean(remoteUrl) && !fetchRouting.allowRemoteHostedProviders);
+	const remoteOptInNeeded = Boolean(remoteUrl) && !fetchRouting.allowRemoteHostedProviders;
 	const guidance = [
 		finalHttpResult?.error ?? "No fetch_content provider returned content",
 		...(firecrawlError ? [`Firecrawl fallback failed: ${firecrawlError}`] : []),
-		...(crawl4aiError ? [`Crawl4AI fallback failed: ${crawl4aiError}`] : []),
 		...(tinyfishError ? [`TinyFish fallback failed: ${tinyfishError}`] : []),
-		...(search1apiError ? [`Search1API fallback failed: ${search1apiError}`] : []),
 		...(queritError ? [`Querit fallback failed: ${queritError}`] : []),
-		...(kagiError ? [`Kagi fallback failed: ${kagiError}`] : []),
-		...(ollamaError ? [`Ollama fallback failed: ${ollamaError}`] : []),
-		...(parallelError ? [`Parallel fallback failed: ${parallelError}`] : []),
-		...(parallelMcpError ? [`Parallel MCP fallback failed: ${parallelMcpError}`] : []),
-		...(brightdataError ? [`Bright Data fallback failed: ${brightdataError}`] : []),
 		"",
 		"Fallback options:",
-		...(jinaHint ? [jinaHint] : []),
+		...(remoteOptInNeeded
+			? [`  • TinyFish and Querit are hosted services and are disabled for remote HTTP(S) targets; set fetchRouting.allowRemoteHostedProviders to true in ${WEB_SEARCH_CONFIG_PATH} to allow them (target URLs are fetched through their infrastructure)`]
+			: []),
 		`  • Set firecrawlBaseUrl in ${WEB_SEARCH_CONFIG_PATH} to a self-hosted Firecrawl instance`,
-		`  • Set crawl4aiBaseUrl in ${WEB_SEARCH_CONFIG_PATH} to a self-hosted Crawl4AI instance`,
 		`  • Set tinyfishApiKey in ${WEB_SEARCH_CONFIG_PATH} or TINYFISH_API_KEY`,
-		`  • Set search1apiApiKey in ${WEB_SEARCH_CONFIG_PATH} or SEARCH1API_KEY`,
 		`  • Set queritApiKey in ${WEB_SEARCH_CONFIG_PATH} or QUERIT_API_KEY`,
-		`  • Set kagiApiKey in ${WEB_SEARCH_CONFIG_PATH} or KAGI_API_KEY`,
-		`  • Set ollamaApiKey in ${WEB_SEARCH_CONFIG_PATH} or OLLAMA_API_KEY`,
-		`  • Set parallelApiKey in ${WEB_SEARCH_CONFIG_PATH} or PARALLEL_API_KEY`,
-		`  • Set brightdataApiKey and brightdataUnlockerZone in ${WEB_SEARCH_CONFIG_PATH} or BRIGHTDATA_API_KEY and BRIGHTDATA_UNLOCKER_ZONE`,
-		`  • Set GEMINI_API_KEY in ${WEB_SEARCH_CONFIG_PATH}`,
-		"  • Sign into gemini.google.com in Chrome",
 		...(searchToolName ? [`  • Use ${searchToolName} to find content about this topic`] : []),
 	].join("\n");
 	return { ...(finalHttpResult ?? { url, title: "", content: "", error: null }), error: guidance };

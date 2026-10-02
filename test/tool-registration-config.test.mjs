@@ -70,15 +70,16 @@ test("malformed config falls back during extension registration", () => {
 	const child = runRegistrationWithConfig("{");
 	assert.equal(child.status, 0, child.stderr);
 	const registered = JSON.parse(child.stdout);
-	assert.deepEqual(registered.tools.map(tool => tool.name), ["web_search", "source_check", "fetch_content", "get_search_content", "web_enable"]);
+	assert.deepEqual(registered.tools.map(tool => tool.name), ["web_search", "web_search_enhanced", "source_check", "fetch_content", "get_search_content", "web_enable"]);
 });
 
 test("default public execution tool definitions retain their compatibility hashes", () => {
 	const expected = {
-		web_search: "c1f0e0020561c46d9dc5547664ac50ab2442e57ab9aa14d4b06a1bd18428dbae",
-		source_check: "685467b6e6bcbe32f7d7eb51805896f43077e3116e64a47b637c4584b3f2510e",
-		fetch_content: "0082465bae0f184988fd37fe152cad9c7a236e410747ba6770013895a28978d4",
-		get_search_content: "e1c7597fc085a811c0c6fcde365a96571c275c70b93a48206a38be06a7a45a5f",
+		web_search: "1ce9b937038f11b06e42c440e978a851025e980bbca6c6d84da8fdcbb414536d",
+		web_search_enhanced: "f63ae950ddf962990a97316245ef4775c9c395668421c7f42165532b195bbfba",
+		source_check: "ee757cebc04487efef94a5bbfeb4d663fb8be94599b9bc053c1491fa26d74592",
+		fetch_content: "9117eca8fd18398506d3f708f4edc915f2f63bdd6a7e889df107311b840ec31d",
+		get_search_content: "cff5c78cc6753512186b1b00d5188307ecf79ec843f0bae97e5be1f52e0f6225",
 	};
 	const tools = registered({}).tools.filter(tool => tool.name !== "web_enable");
 	assert.deepEqual(Object.fromEntries(tools.map(({ name, description, parameters }) => [
@@ -107,17 +108,17 @@ test("tool registration gates support legacy and per-tool config", () => {
 	assert.deepEqual(registeredToolNames({
 		webSearch: { enabled: false },
 		tools: { webSearch: { enabled: true }, sourceCheck: { enabled: true }, fetchContent: { enabled: false } },
-	}), ["web_search", "source_check", "get_search_content", "web_enable"]);
+	}), ["web_search", "web_search_enhanced", "source_check", "get_search_content", "web_enable"]);
 	assert.deepEqual(registeredToolNames({
 		tools: { sourceCheck: { enabled: false }, getSearchContent: { enabled: false } },
-	}), ["web_search", "fetch_content", "web_enable"]);
+	}), ["web_search", "web_search_enhanced", "fetch_content", "web_enable"]);
 });
 
 test("command registration gates default to enabled", () => {
-	assert.deepEqual(registeredCommandNames({}), ["websearch", "curator", "google-account", "search"]);
+	assert.deepEqual(registeredCommandNames({}), ["search"]);
 	assert.deepEqual(registeredCommandNames({
-		commands: { websearch: { enabled: false }, search: { enabled: false } },
-	}), ["curator", "google-account"]);
+		commands: { search: { enabled: false } },
+	}), []);
 });
 
 test("fetch_content schema exposes auth profile opt-in", () => {
@@ -161,15 +162,16 @@ test("web activity shortcut renders through the supported string-array API", asy
 });
 
 test("tool names can be configured without changing defaults", () => {
-	assert.deepEqual(registeredToolNames({}), ["web_search", "source_check", "fetch_content", "get_search_content", "web_enable"]);
+	assert.deepEqual(registeredToolNames({}), ["web_search", "web_search_enhanced", "source_check", "fetch_content", "get_search_content", "web_enable"]);
 	assert.deepEqual(registeredToolNames({
 		toolNames: {
 			webSearch: "research_web",
+			webSearchEnhanced: "research_web_deep",
 			sourceCheck: "verify_sources",
 			fetchContent: "grab_content",
 			getSearchContent: "open_content",
 		},
-	}), ["research_web", "verify_sources", "grab_content", "open_content", "web_enable"]);
+	}), ["research_web", "research_web_deep", "verify_sources", "grab_content", "open_content", "web_enable"]);
 });
 
 test("tool config rejects invalid, duplicate, or reserved names and unknown toolActivation", () => {
@@ -200,4 +202,6 @@ test("README documents registration gates and toolNames", () => {
 	assert.match(readmeSrc, /"commands": \{/);
 	assert.match(readmeSrc, /Pi restart is required for tool and command registration changes/);
 	assert.match(readmeSrc, /`toolNames` can opt into alternate public tool names/);
+	assert.match(readmeSrc, /web_search_enhanced/);
+	assert.match(readmeSrc, /exp\(wᵢ\) \/ Σ exp\(wⱼ\)/);
 });

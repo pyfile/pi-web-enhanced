@@ -1,7 +1,7 @@
 // Structured source evidence and machine-readable research artifacts.
 import { createHash } from "node:crypto";
 import { generateId, getResult, storeResult } from "./storage.ts";
-import type { SearchResult } from "./perplexity.ts";
+import type { SearchResult } from "./search-types.ts";
 import type { ExtractedContent } from "./extract.ts";
 
 export type SourceQuality = "official_docs" | "vendor_docs" | "repo_issue" | "blog" | "forum" | "news" | "unknown";

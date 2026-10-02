@@ -19,11 +19,3 @@ function loadFeatureConfig(): FeatureConfig {
 export function isImageEnabled(): boolean {
 	return loadFeatureConfig().image?.enabled !== false;
 }
-
-export function canAttachImages(): boolean {
-	try {
-		return isImageEnabled();
-	} catch {
-		return false;
-	}
-}

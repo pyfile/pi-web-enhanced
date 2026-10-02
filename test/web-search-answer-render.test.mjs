@@ -33,17 +33,12 @@ function runChild(script, env) {
 	});
 }
 
-test("web_search preserves OpenAI answers even when no sources are returned", async () => {
-	const home = await mkdtemp(join(tmpdir(), "pi-web-access-openai-answer-"));
+test("web_search preserves provider answers even when no sources are returned", async () => {
+	const home = await mkdtemp(join(tmpdir(), "pi-web-enhanced-answer-"));
 	const child = runChild(`
 		globalThis.fetch = async () => new Response(JSON.stringify({
-			output: [
-				{ type: "web_search_call", action: { sources: [] } },
-				{
-					type: "message",
-					content: [{ type: "output_text", text: "Direct answer without citations." }],
-				},
-			],
+			answer: "Direct answer without citations.",
+			results: [],
 		}), { status: 200, headers: { "content-type": "application/json" } });
 
 		const { default: initializeExtension } = await import(${JSON.stringify(indexUrl)});
@@ -60,15 +55,14 @@ test("web_search preserves OpenAI answers even when no sources are returned", as
 		const webSearch = tools.find((tool) => tool.name === "web_search");
 		const result = await webSearch.execute("call", {
 			query: "answer only",
-			provider: "openai",
-			workflow: "none",
+			provider: "tavily",
 		});
 		console.log(JSON.stringify({ text: result.content[0].text, details: result.details }));
 	`, {
 		HOME: home,
 		USERPROFILE: home,
 		PI_CODING_AGENT_DIR: home,
-		OPENAI_API_KEY: "openai-test-key",
+		TAVILY_API_KEY: "tavily-test-key",
 	});
 
 	assert.equal(child.status, 0, child.stderr);

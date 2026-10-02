@@ -140,10 +140,6 @@ test("index.ts imports buildSearchErrorPlan and wires it into the web_search err
 	// The web_search renderResult error branch must call buildSearchErrorPlan.
 	// (Mutation: reverting renderResult to `return new Text(error...)` drops this.)
 	assert.match(indexSrc, /buildSearchErrorPlan\(details as SearchErrorDetails\)/);
-	// buildCurationCancelledReturn must now carry partial diagnostics into details
-	// (mutation: dropping the partial arg reverts to the discarded-results bug).
-	assert.match(indexSrc, /buildCurationCancelledReturn\(reason, \{/);
-	assert.match(indexSrc, /cancelledQueries/);
 	// the 2 other tools must also delegate to buildSearchErrorPlan (mutation-proof:
 	// reverting any of them to the bare single-line drops its buildSearchErrorPlan call).
 	// Count call sites: web_search + fetch_content + get_search_content = 3.

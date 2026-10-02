@@ -40,49 +40,6 @@ test("pdf.maxPages defaults to 100 and accepts positive integer values", () => {
 	assert.equal(readConfig({ pdf: { maxPages: "25" } }).maxPages, 100);
 });
 
-test("pdf.provider defaults to auto and validates explicit providers", () => {
-	assert.equal(readConfig(undefined).provider, "auto");
-	assert.equal(readConfig({ pdf: { provider: "gemini" } }).provider, "gemini");
-	assert.equal(
-		readConfig({ pdf: { provider: "datalab" } }).provider,
-		"datalab",
-	);
-	assert.equal(readConfig({ pdf: { provider: "unpdf" } }).provider, "unpdf");
-	assert.equal(readConfig({ pdf: { provider: "gemini2" } }).provider, "auto");
-});
-
-test("pdf.datalabMode defaults to balanced and validates modes", () => {
-	assert.equal(readConfig(undefined).datalabMode, "balanced");
-	assert.equal(
-		readConfig({ pdf: { datalabMode: "fast" } }).datalabMode,
-		"fast",
-	);
-	assert.equal(
-		readConfig({ pdf: { datalabMode: "accurate" } }).datalabMode,
-		"accurate",
-	);
-	assert.equal(
-		readConfig({ pdf: { datalabMode: "ultra" } }).datalabMode,
-		"balanced",
-	);
-});
-
-test("pdf.datalabTimeoutMs defaults to 120000 and caps at 300000", () => {
-	assert.equal(readConfig(undefined).datalabTimeoutMs, 120000);
-	assert.equal(
-		readConfig({ pdf: { datalabTimeoutMs: 5000 } }).datalabTimeoutMs,
-		5000,
-	);
-	assert.equal(
-		readConfig({ pdf: { datalabTimeoutMs: 999999 } }).datalabTimeoutMs,
-		300000,
-	);
-	assert.equal(
-		readConfig({ pdf: { datalabTimeoutMs: -1 } }).datalabTimeoutMs,
-		120000,
-	);
-});
-
 test("PDF streamed byte enforcement allows the exact limit", async () => {
 	const bytes = Uint8Array.from([1, 2]);
 	const maxSizeMB = bytes.byteLength / 1024 / 1024;
@@ -118,7 +75,6 @@ function readConfigSequence(configs) {
 				import { writeFileSync } from "node:fs";
 				import { join } from "node:path";
 				process.env.PI_CODING_AGENT_DIR = ${JSON.stringify(configDir)};
-				delete process.env.DATALAB_MODE;
 				const configs = ${JSON.stringify(configs)};
 				const { loadPDFConfig } = await import(${JSON.stringify(pdfModuleUrl)});
 				const values = [];

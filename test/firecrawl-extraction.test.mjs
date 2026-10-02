@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { mkdtempSync } from "node:fs";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -10,7 +11,9 @@ const extractModuleUrl = new URL("../extract.ts", import.meta.url).href;
 const searchModuleUrl = new URL("../gemini-search.ts", import.meta.url).href;
 
 function runChild(script, env = {}) {
-	const childEnv = { ...process.env };
+	// Isolate HOME so the developer's real ~/.pi/agent/web-search.json never leaks in.
+	const isolatedHome = mkdtempSync(join(tmpdir(), "pi-web-enhanced-firecrawl-home-"));
+	const childEnv = { ...process.env, HOME: isolatedHome, USERPROFILE: isolatedHome, PI_CODING_AGENT_DIR: isolatedHome };
 	for (const key of [
 		"PI_CODING_AGENT_DIR", "XDG_CONFIG_HOME", "FIRECRAWL_BASE_URL", "FIRECRAWL_API_KEY",
 		"FIRECRAWL_API_VERSION", "FIRECRAWL_FRESH_SCRAPE", "PARALLEL_API_KEY", "TINYFISH_API_KEY", "GEMINI_API_KEY",

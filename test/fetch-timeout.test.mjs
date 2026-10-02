@@ -41,8 +41,8 @@ async function runResolver(config, options) {
 	return JSON.parse(child.stdout.trim());
 }
 
-async function runJina(config, options = {}) {
-	const root = await mkdtemp(join(tmpdir(), "pi-fetch-timeout-jina-"));
+async function runHostedExtract(config, options = {}) {
+	const root = await mkdtemp(join(tmpdir(), "pi-web-enhanced-fetch-timeout-"));
 	await writeConfig(root, config);
 	const child = spawnSync(process.execPath, ["--input-type=module"], {
 		input: `
@@ -53,8 +53,8 @@ async function runJina(config, options = {}) {
 				const text = String(url);
 				calls.push(text);
 				if (text === "https://example.com/routed") return new Response("blocked", { status: 403 });
-				if (text.startsWith("https://r.jina.ai/")) {
-					return new Response("Markdown Content:\\n# Routed\\n\\n" + "Jina routed content. ".repeat(12), { status: 200 });
+				if (text.startsWith("https://crawl.example.com/")) {
+					return new Response(JSON.stringify({ success: true, data: { markdown: "# Routed\\n\\n" + "Hosted routed content. ".repeat(12), metadata: { title: "Routed" } } }), { status: 200, headers: { "content-type": "application/json" } });
 				}
 				throw new Error("Unexpected fetch " + text);
 			};
@@ -84,12 +84,14 @@ async function runJina(config, options = {}) {
 	return JSON.parse(child.stdout.trim());
 }
 
-const jinaConfig = (timeout) => ({
+const hostedConfig = (timeout) => ({
 	fetch: { timeout },
-	fetchRouting: { providers: ["jina"], allowRemoteHostedProviders: true },
+	firecrawlBaseUrl: "https://crawl.example.com",
+	firecrawlApiKey: "fc-test-key",
+	fetchRouting: { providers: ["firecrawl"] },
 });
 
-test("fetch.timeout defaults to the direct HTTP/Jina 30 second budget", async () => {
+test("fetch.timeout defaults to the direct HTTP/hosted 30 second budget", async () => {
 	assert.deepEqual(await runResolver(undefined), { timeoutMs: 30000 });
 	assert.deepEqual(await runResolver({}), { timeoutMs: 30000 });
 });
@@ -121,31 +123,27 @@ test("malformed web-search.json fails closed with the config path", async () => 
 	assert.match(output.error, /Failed to parse .*web-search\.json/);
 });
 
-test("Jina receives the resolved configured timeout budget", async () => {
-	const output = await runJina(jinaConfig(1.25));
-	assert.deepEqual(output.calls, [
-		"https://example.com/routed",
-		"https://r.jina.ai/https://example.com/routed",
-	]);
+test("the configured fetch.timeout governs the direct HTTP attempt", async () => {
+	const output = await runHostedExtract(hostedConfig(1.25));
+	assert.equal(output.calls[0], "https://example.com/routed");
 	assert.ok(output.httpTimeoutCalls.includes(1250));
-	assert.deepEqual(output.timeoutCalls, [1250]);
 	assert.equal(output.result.error, null);
 });
 
 test("explicit timeoutMs takes precedence over invalid fetch.timeout config", async () => {
-	const output = await runJina(jinaConfig(0), { timeoutMs: 7 });
-	assert.deepEqual(output.timeoutCalls, [7]);
+	const output = await runHostedExtract(hostedConfig(0), { timeoutMs: 7 });
+	assert.ok(output.httpTimeoutCalls.includes(7));
 	assert.equal(output.result.error, null);
 });
 
-test("Jina does not swallow invalid timeout configuration", async () => {
-	const output = await runJina(jinaConfig(0));
+test("the direct HTTP attempt does not swallow invalid timeout configuration", async () => {
+	const output = await runHostedExtract(hostedConfig(0));
 	assert.deepEqual(output.calls, []);
 	assert.match(output.result.error, /Invalid fetch\.timeout .*web-search\.json/);
 });
 
 test("positive sub-millisecond fetch.timeout values use a nonzero budget", async () => {
-	const output = await runJina(jinaConfig(0.0005));
-	assert.deepEqual(output.timeoutCalls, [1]);
+	const output = await runHostedExtract(hostedConfig(0.0005));
+	assert.ok(output.httpTimeoutCalls.includes(1));
 	assert.equal(output.result.error, null);
 });

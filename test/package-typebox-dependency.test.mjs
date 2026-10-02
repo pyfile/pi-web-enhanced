@@ -9,7 +9,7 @@ import { test } from "node:test";
 const repoRoot = resolve(new URL("..", import.meta.url).pathname);
 
 test("packed installs keep typebox as a peer dependency (hosted by pi at runtime)", async () => {
-	const tempDir = await mkdtemp(join(tmpdir(), "pi-web-access-pack-install-"));
+	const tempDir = await mkdtemp(join(tmpdir(), "pi-web-enhanced-pack-install-"));
 	try {
 		const packOutput = execFileSync("npm", ["pack", "--json", "--pack-destination", tempDir], {
 			cwd: repoRoot,
@@ -29,8 +29,8 @@ test("packed installs keep typebox as a peer dependency (hosted by pi at runtime
 			stdio: ["ignore", "pipe", "pipe"],
 		});
 
-		const packageRequire = createRequire(join(tempDir, "node_modules", "pi-web-access", "package.json"));
-		const installedManifest = packageRequire("pi-web-access/package.json");
+		const packageRequire = createRequire(join(tempDir, "node_modules", "pi-web-enhanced", "package.json"));
+		const installedManifest = packageRequire("pi-web-enhanced/package.json");
 		assert.equal(installedManifest.peerDependencies?.typebox, "*");
 		assert.equal(installedManifest.dependencies?.typebox, undefined);
 		assert.throws(() => packageRequire.resolve("typebox"), { code: "MODULE_NOT_FOUND" });

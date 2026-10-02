@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { test } from "node:test";
 
-for (const kind of ["page", "rewrite"]) {
+for (const kind of ["page"]) {
 	for (const outcome of ["resolve", "reject"]) {
 		test(`${kind} cancels before cold compat import ${outcome}s without late completion`, () => {
 			const moduleUrl = new URL(kind === "page" ? "../page-query.ts" : "../query-rewrite.ts", import.meta.url).href;

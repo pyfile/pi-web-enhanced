@@ -9,8 +9,6 @@ import { test } from "node:test";
 const queritModuleUrl = new URL("../querit.ts", import.meta.url).href;
 const searchModuleUrl = new URL("../gemini-search.ts", import.meta.url).href;
 const extractModuleUrl = new URL("../extract.ts", import.meta.url).href;
-const curatorPageModuleUrl = new URL("../curator-page.ts", import.meta.url)
-	.href;
 
 const PROVIDER_ENV_KEYS = [
 	"OPENAI_API_KEY",
@@ -390,35 +388,6 @@ test("Querit errors redact credentials and surface API-level failures", async ()
 	);
 });
 
-test("configured search routing can select Querit", async () => {
-	const home = await createHome({
-		searchRouting: { providers: ["querit"], fallbackOn: ["network"] },
-	});
-	const child = runChild(
-		`
-		globalThis.fetch = async () => new Response(JSON.stringify({
-			error_code: 200,
-			error_msg: "",
-			search_id: 401,
-			results: { result: [{ title: "Routed", url: "https://example.com/routed", snippet: "Querit route" }] },
-		}), { status: 200 });
-		const { search } = await import(${JSON.stringify(searchModuleUrl)});
-		const result = await search("route", { provider: "auto" });
-		console.log(JSON.stringify({ provider: result.provider, results: result.results }));
-	`,
-		{
-			HOME: home,
-			USERPROFILE: home,
-			PI_CODING_AGENT_DIR: join(home, ".pi", "agent"),
-			QUERIT_API_KEY: "synthetic-querit-test-key",
-		},
-	);
-
-	assert.equal(child.status, 0, child.stderr);
-	const output = JSON.parse(child.stdout.trim());
-	assert.equal(output.provider, "querit");
-	assert.equal(output.results[0].title, "Routed");
-});
 
 test("fetch_content uses Querit after local and earlier hosted extraction fail", async () => {
 	const home = await createHome({
@@ -433,7 +402,6 @@ test("fetch_content uses Querit after local and earlier hosted extraction fail",
 			if (target === "https://example.com/app") {
 				return new Response("<html><body><script></script><script></script><script></script><script></script>Loading</body></html>", { status: 200, headers: { "content-type": "text/html" } });
 			}
-			if (target.startsWith("https://r.jina.ai/")) return new Response("", { status: 503 });
 			if (target === "https://api.querit.ai/v1/contents") {
 				return new Response(JSON.stringify({
 					error_code: 200,
@@ -462,7 +430,6 @@ test("fetch_content uses Querit after local and earlier hosted extraction fail",
 	const output = JSON.parse(child.stdout.trim());
 	assert.deepEqual(output.calls, [
 		"https://example.com/app",
-		"https://r.jina.ai/https://example.com/app",
 		"https://api.querit.ai/v1/contents",
 	]);
 	assert.deepEqual(output.result, {
@@ -473,40 +440,8 @@ test("fetch_content uses Querit after local and earlier hosted extraction fail",
 	});
 });
 
-test("curator page exposes Querit as a manual provider", async () => {
-	const { generateCuratorPage } = await import(curatorPageModuleUrl);
-	const page = generateCuratorPage(
-		["querit query"],
-		"session-token",
-		20,
-		{
-			all: false,
-			openai: false,
-			brave: false,
-			parallel: false,
-			tinyfish: false,
-			search1api: false,
-			querit: true,
-			tavily: false,
-			serpdive: false,
-			searxng: false,
-			perplexity: false,
-			exa: false,
-			gemini: false,
-			kimi: false,
-			anysearch: false,
-		},
-		"querit",
-		"querit",
-		[],
-		null,
-	);
-	assert.match(page, /data-provider="querit"/);
-	assert.match(page, />Querit<\/button>/);
-	assert.match(page, /provider-tag\.provider-querit/);
-});
 
-test("Querit provider timeout continues to the next fetch_content fallback", async () => {
+test("a TinyFish failure continues to the Querit fetch_content fallback", async () => {
 	const home = await createHome({
 		fetchRouting: { allowRemoteHostedProviders: true },
 	});
@@ -516,49 +451,44 @@ test("Querit provider timeout continues to the next fetch_content fallback", asy
 		globalThis.fetch = async (url, init = {}) => {
 			const target = String(url);
 			calls.push(target);
-			if (target === "https://example.com/timeout") {
+			if (target === "https://example.com/blocked") {
 				return new Response("<html><body><script></script><script></script><script></script><script></script>Loading</body></html>", { status: 200, headers: { "content-type": "text/html" } });
 			}
-			if (target.startsWith("https://r.jina.ai/")) return new Response("", { status: 503 });
-			if (target === "https://api.querit.ai/v1/contents") {
-				return new Promise((_resolve, reject) => {
-					const keepAlive = setTimeout(() => reject(new Error("Querit timeout did not fire")), 100);
-					const rejectAbort = () => {
-						clearTimeout(keepAlive);
-						reject(init.signal?.reason ?? new DOMException("Aborted", "AbortError"));
-					};
-					if (init.signal?.aborted) rejectAbort();
-					else init.signal?.addEventListener("abort", rejectAbort, { once: true });
-				});
-			}
-			if (target === "https://api.parallel.ai/v1/extract") {
+			if (target === "https://api.fetch.tinyfish.ai") {
 				return new Response(JSON.stringify({
-					results: [{
-						url: "https://example.com/timeout",
-						title: "Parallel fallback",
-						full_content: "# Recovered by Parallel\\n" + "content ".repeat(100),
-					}],
+					results: [],
+					errors: [{ url: "https://example.com/blocked", error: "bot_blocked", status: 403 }],
+				}), { status: 200 });
+			}
+			if (target === "https://api.querit.ai/v1/contents") {
+				return new Response(JSON.stringify({
+					error_code: 200,
+					error_msg: "",
+					search_id: 403,
+					results: [{ id: "fetch-blocked", url: "https://example.com/blocked", content: "# Recovered by Querit", extrasMeta: { title: "Querit fallback" } }],
+					statuses: [{ id: "fetch-blocked", status: "success" }],
+					searchTime: 1,
 				}), { status: 200 });
 			}
 			throw new Error("Unexpected fetch " + target);
 		};
 		const { extractContent } = await import(${JSON.stringify(extractModuleUrl)});
 		const lookup = async () => [{ address: "93.184.216.34", family: 4 }];
-		const result = await extractContent("https://example.com/timeout", undefined, { lookup, timeoutMs: 1 });
+		const result = await extractContent("https://example.com/blocked", undefined, { lookup });
 		console.log(JSON.stringify({ calls, result }));
 	`,
 		{
 			HOME: home,
 			USERPROFILE: home,
 			QUERIT_API_KEY: "synthetic-querit-test-key",
-			PARALLEL_API_KEY: "synthetic-parallel-test-key",
+			TINYFISH_API_KEY: "synthetic-tinyfish-test-key",
 		},
 	);
 
 	assert.equal(child.status, 0, child.stderr);
 	const output = JSON.parse(child.stdout.trim());
+	assert.ok(output.calls.includes("https://api.fetch.tinyfish.ai"));
 	assert.ok(output.calls.includes("https://api.querit.ai/v1/contents"));
-	assert.ok(output.calls.includes("https://api.parallel.ai/v1/extract"));
-	assert.equal(output.result.title, "Parallel fallback");
-	assert.match(output.result.content, /Recovered by Parallel/);
+	assert.equal(output.result.title, "Querit fallback");
+	assert.match(output.result.content, /Recovered by Querit/);
 });

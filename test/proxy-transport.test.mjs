@@ -325,7 +325,7 @@ test("invalid configured proxy fails closed instead of direct fetching", async (
 test("invalid configured proxy reaches background fetch rejection handling", async (t) => {
 	const dir = await mkdtemp(join(tmpdir(), "pi-proxy-background-config-test-"));
 	const configPath = join(dir, "web-search.json");
-	await writeFile(configPath, JSON.stringify({ provider: "openai" }));
+	await writeFile(configPath, JSON.stringify({ provider: "tavily", tavilyApiKey: "proxy-background-test-key" }));
 	t.after(async () => {
 		await rm(dir, { recursive: true, force: true });
 	});
@@ -336,14 +336,14 @@ test("invalid configured proxy reaches background fetch rejection handling", asy
 			const configPath = ${JSON.stringify(configPath)};
 			const messages = [];
 			globalThis.fetch = async (url) => {
-				if (String(url) !== "https://api.openai.com/v1/responses") {
+				if (String(url) !== "https://api.tavily.com/search") {
 					throw new Error("Unexpected fetch: " + url);
 				}
-				writeFileSync(configPath, JSON.stringify({ provider: "openai", proxy: "ftp://proxy.example:21" }));
-				return new Response(JSON.stringify({ output: [
-					{ type: "web_search_call", action: { sources: [{ title: "Source", url: "https://example.com/source" }] } },
-					{ type: "message", content: [{ type: "output_text", text: "Search answer" }] },
-				] }), { status: 200, headers: { "content-type": "application/json" } });
+				writeFileSync(configPath, JSON.stringify({ provider: "tavily", tavilyApiKey: "proxy-background-test-key", proxy: "ftp://proxy.example:21" }));
+				return new Response(JSON.stringify({
+					answer: "Search answer",
+					results: [{ title: "Source", url: "https://example.com/source", content: "snippet" }],
+				}), { status: 200, headers: { "content-type": "application/json" } });
 			};
 			const tools = [];
 			const handlers = new Map();
@@ -361,8 +361,7 @@ test("invalid configured proxy reaches background fetch rejection handling", asy
 			const tool = tools.find((candidate) => candidate.name === "web_search");
 			const result = await tool.execute("background-proxy-test", {
 				query: "proxy cleanup",
-				provider: "openai",
-				workflow: "none",
+				provider: "tavily",
 				includeContent: true,
 			});
 			await new Promise((resolve) => setImmediate(resolve));
@@ -372,7 +371,7 @@ test("invalid configured proxy reaches background fetch rejection handling", asy
 			}));
 		`,
 		encoding: "utf8",
-		env: { ...process.env, PI_CODING_AGENT_DIR: dir, OPENAI_API_KEY: "proxy-background-test-key" },
+		env: { ...process.env, PI_CODING_AGENT_DIR: dir, TAVILY_API_KEY: "proxy-background-test-key" },
 		maxBuffer: 2 * 1024 * 1024,
 	});
 	assert.equal(child.status, 0, child.stderr);
@@ -438,19 +437,20 @@ test("proxy curl keeps manual redirects as redirect responses", async (t) => {
 });
 
 test("source_check fetchContent uses the explicit proxy for result pages", async (t) => {
-	const previousKey = process.env.OPENAI_API_KEY;
-	process.env.OPENAI_API_KEY = "source-check-proxy-test-key";
+	const previousKey = process.env.TAVILY_API_KEY;
+	process.env.TAVILY_API_KEY = "source-check-proxy-test-key";
 	t.after(() => {
-		if (previousKey === undefined) delete process.env.OPENAI_API_KEY;
-		else process.env.OPENAI_API_KEY = previousKey;
+		if (previousKey === undefined) delete process.env.TAVILY_API_KEY;
+		else process.env.TAVILY_API_KEY = previousKey;
 	});
 
 	await withFakeCurl(t, {
-		"https://api.openai.com/v1/responses": {
+		"https://api.tavily.com/search": {
 			status: 200,
 			statusText: "OK",
 			body: JSON.stringify({
-				output: [{ type: "web_search_call", action: { sources: [{ title: "API docs", url: "https://example.com/api" }] } }],
+				answer: "",
+				results: [{ title: "API docs", url: "https://example.com/api", content: "snippet" }],
 			}),
 		},
 		"https://example.com/api": { status: 200, statusText: "OK", body: "<html><title>API docs</title><body>The API docs are available.</body></html>" },
@@ -459,14 +459,14 @@ test("source_check fetchContent uses the explicit proxy for result pages", async
 		assert.ok(tool);
 		const response = await tool.execute("call", {
 			claim: "API docs",
-			provider: "openai",
+			provider: "tavily",
 			fetchContent: true,
 			proxy: "http://call-proxy.example:8080",
 		}, undefined, undefined, { modelRegistry: {} });
 
 		assert.equal(response.details.sourceCount, 1);
 		const calls = await readCurlCalls(logPath);
-		const apiCall = calls.find((args) => args.at(-1) === "https://api.openai.com/v1/responses");
+		const apiCall = calls.find((args) => args.at(-1) === "https://api.tavily.com/search");
 		const pageCall = calls.find((args) => args.at(-1) === "https://example.com/api");
 		assert.ok(apiCall);
 		assert.ok(pageCall);
@@ -494,188 +494,5 @@ test("fetch_content passes the explicit proxy through queued extraction", async 
 		const pageCall = (await readCurlCalls(logPath)).find((args) => args.at(-1) === "https://example.com/page");
 		assert.ok(pageCall);
 		assert.ok(["http://call-proxy.example:8080", "http://call-proxy.example:8080/"].includes(proxyArg(pageCall)));
-	});
-});
-
-test("websearch command scopes searches but not model callbacks to configured proxy", async (t) => {
-	await withFakeCurl(t, {
-		"https://run.xcrawl.com/v1/serp": {
-			status: 200,
-			statusText: "OK",
-			body: JSON.stringify({
-				search_metadata: { status: "completed" },
-				organic_results: [{ title: "Result", link: "https://example.com/result", snippet: "Answer" }],
-			}),
-		},
-	}, async (logPath) => {
-		const configDir = dirname(logPath);
-		await writeFile(join(configDir, "web-search.json"), JSON.stringify({
-			provider: "xcrawl",
-			xcrawlApiKey: "xc-test-key",
-			proxy: "http://configured-proxy.example:8080",
-			autoOpenBrowser: false,
-			curatorTimeoutSeconds: 5,
-		}) + "\n", "utf8");
-
-		const child = spawnSync(process.execPath, ["--input-type=module"], {
-			input: `
-				const { setTimeout: delay } = await import("node:timers/promises");
-				const { hasScopedProxyDecision } = await import(${JSON.stringify(utilsUrl)});
-				const commands = new Map();
-				const notifications = [];
-				const modelScoped = [];
-				const model = { provider: "openai", id: "gpt-5-mini" };
-				const modelRegistry = {
-					getAvailable() { return [model]; },
-					find(provider, id) { return provider === model.provider && id === model.id ? model : undefined; },
-					async getApiKeyAndHeaders() { return { ok: true, apiKey: "summary-test-key" }; },
-					async complete(_model, request, options) {
-						modelScoped.push(hasScopedProxyDecision());
-						if (options.signal?.aborted) throw new Error("summary signal aborted");
-						const prompt = String(request.messages?.[0]?.content?.[0]?.text ?? "");
-						return {
-							stopReason: "stop",
-							content: [{ type: "text", text: prompt.includes("Rewrite this") ? "rewritten query" : "summarized results" }],
-						};
-					},
-				};
-				const pi = {
-					registerTool() {},
-					registerCommand(name, command) { commands.set(name, command); },
-					registerShortcut() {},
-					on() {},
-					appendEntry() {},
-					sendMessage() {},
-				};
-				const initializeExtension = (await import(${JSON.stringify(indexUrl)})).default;
-				initializeExtension(pi);
-				const ctx = {
-					model: undefined,
-					modelRegistry,
-					cwd: process.cwd(),
-					isProjectTrusted() { return true; },
-					scopedModels: [],
-					ui: { notify(message, level) { notifications.push({ message, level }); } },
-				};
-				await commands.get("websearch").handler("initial command query", ctx);
-				const urlText = notifications
-					.map(note => note.message.match(/http:\\/\\/[^ ]+/)?.[0])
-					.find(Boolean);
-				if (!urlText) throw new Error("websearch command did not report a curator URL");
-				const curatorUrl = new URL(urlText);
-				const token = curatorUrl.searchParams.get("session");
-				async function request(path, body) {
-					const url = new URL(path, curatorUrl.origin);
-					if (!body) url.searchParams.set("session", token);
-					const response = await fetch(url, body ? {
-						method: "POST",
-						headers: { "content-type": "application/json" },
-						body: JSON.stringify({ token, ...body }),
-					} : undefined);
-					return { status: response.status, body: await response.json() };
-				}
-				let state;
-				for (let attempt = 0; attempt < 100; attempt++) {
-					state = (await request("/state")).body;
-					if (state.done) break;
-					await delay(10);
-				}
-				if (!state?.done) throw new Error("initial websearch command did not finish");
-				const added = await request("/search", { query: "added command query" });
-				if (added.status !== 200 || added.body.error) throw new Error("command add-search failed");
-				const rewritten = await request("/rewrite", { query: "rewrite this query" });
-				if (rewritten.status !== 200 || rewritten.body.query !== "rewritten query") throw new Error("command rewrite failed");
-				const summarized = await request("/summarize", { selected: [0] });
-				if (summarized.status !== 200 || summarized.body.summary !== "summarized results") throw new Error("command summarize failed");
-				const submitted = await request("/submit", { selected: [0], summary: "finished" });
-				console.log(JSON.stringify({
-					initialDone: state.done,
-					addSearchStatus: added.status,
-					rewriteStatus: rewritten.status,
-					summarizeStatus: summarized.status,
-					submitStatus: submitted.status,
-					modelScoped,
-				}));
-				await delay(50);
-			`,
-			encoding: "utf8",
-			env: { ...process.env, PI_CODING_AGENT_DIR: configDir },
-			maxBuffer: 2 * 1024 * 1024,
-		});
-
-		assert.equal(child.status, 0, child.stderr);
-		assert.deepEqual(JSON.parse(child.stdout.trim()), {
-			initialDone: true,
-			addSearchStatus: 200,
-			rewriteStatus: 200,
-			summarizeStatus: 200,
-			submitStatus: 200,
-			modelScoped: [false, false],
-		});
-		const calls = await readCurlCalls(logPath);
-		assert.equal(calls.length, 2);
-		assert.equal(calls.filter((args) => args.at(-1) === "https://run.xcrawl.com/v1/serp").length, 2);
-		assert.ok(calls.every((args) => ["http://configured-proxy.example:8080", "http://configured-proxy.example:8080/"].includes(proxyArg(args))));
-	});
-});
-
-test("configured socks5h proxy is accepted and routed to curl", async (t) => {
-	const dir = await mkdtemp(join(tmpdir(), "pi-proxy-socks-config-test-"));
-	await writeFile(join(dir, "web-search.json"), JSON.stringify({ proxy: "socks5h://proxy.example:9050" }));
-	t.after(async () => {
-		await rm(dir, { recursive: true, force: true });
-	});
-
-	await withFakeCurl(t, {
-		"https://example.com/page": { status: 200, statusText: "OK", body: "through socks proxy" },
-	}, async (logPath) => {
-		const child = spawnSync(process.execPath, ["--input-type=module"], {
-			input: `
-				const { getActiveProxy, installGlobalProxyFetch, runWithProxy } = await import(${JSON.stringify(utilsUrl)});
-				installGlobalProxyFetch();
-				const response = await runWithProxy(undefined, () => fetch("https://example.com/page"));
-				console.log(JSON.stringify({ active: runWithProxy(undefined, () => getActiveProxy()), body: await response.text() }));
-			`,
-			encoding: "utf8",
-			env: { ...process.env, PI_CODING_AGENT_DIR: dir },
-			maxBuffer: 2 * 1024 * 1024,
-		});
-		assert.equal(child.status, 0, child.stderr);
-		const output = JSON.parse(child.stdout.trim());
-
-		assert.equal(output.active, "socks5h://proxy.example:9050");
-		assert.equal(output.body, "through socks proxy");
-
-		const calls = await readCurlCalls(logPath);
-		const pageCall = calls.find((args) => args.at(-1) === "https://example.com/page");
-		assert.ok(pageCall);
-		assert.equal(proxyArg(pageCall), "socks5h://proxy.example:9050");
-	});
-});
-
-for (const scheme of ["socks4", "socks4a", "socks5", "socks5h"]) {
-	test(`per-call ${scheme} proxy is routed unchanged to curl`, async (t) => {
-		await withFakeCurl(t, {
-			"https://example.com/page": { status: 200, statusText: "OK", body: "through socks proxy" },
-		}, async (logPath) => {
-			const proxy = `${scheme}://proxy.example:9050`;
-			const response = await runWithProxy(proxy, () => fetch("https://example.com/page"));
-			assert.equal(await response.text(), "through socks proxy");
-			const calls = await readCurlCalls(logPath);
-			assert.equal(calls.length, 1);
-			assert.equal(proxyArg(calls[0]), proxy);
-		});
-	});
-}
-
-test("generic socks proxy is rejected before transport runs", async (t) => {
-	await withFakeCurl(t, {}, async (logPath) => {
-		let called = false;
-		assert.throws(() => runWithProxy("socks://proxy.example:9050", () => {
-			called = true;
-			return fetch("https://example.com/page");
-		}), /proxy.*must use the http:\/\/, https:\/\/, or socks scheme/);
-		assert.equal(called, false);
-		await assert.rejects(readFile(logPath, "utf8"), /ENOENT/);
 	});
 });

@@ -7,7 +7,6 @@ import { test } from "node:test";
 
 const serpApiModuleUrl = new URL("../serpapi.ts", import.meta.url).href;
 const searchModuleUrl = new URL("../gemini-search.ts", import.meta.url).href;
-const curatorPageModuleUrl = new URL("../curator-page.ts", import.meta.url).href;
 
 async function createHome(config = {}) {
 	const home = await mkdtemp(join(tmpdir(), "pi-web-access-serpapi-"));
@@ -198,7 +197,7 @@ test("SerpApi redacts the resolved credential in JSON error envelopes", async ()
 	}
 });
 
-test("SerpApi redacts API errors and appears in the Curator", async () => {
+test("SerpApi redacts API errors", async () => {
 	const home = await createHome({ serpapiApiKey: "serpapi-secret" });
 	const child = runChild(`
 		globalThis.fetch = async () => new Response("invalid serpapi-secret", { status: 401 });
@@ -209,11 +208,4 @@ test("SerpApi redacts API errors and appears in the Curator", async () => {
 	const output = JSON.parse(child.stdout.trim());
 	assert.match(output.error, /\[redacted\]/);
 	assert.doesNotMatch(output.error, /serpapi-secret/);
-
-	const { generateCuratorPage } = await import(curatorPageModuleUrl);
-	const available = new Proxy({ all: false, serpapi: true }, { get: (target, property) => target[property] ?? false });
-	const page = generateCuratorPage(["query"], "token", 20, available, "serpapi", "serpapi", [], null);
-	assert.match(page, /data-provider="serpapi"/);
-	assert.match(page, />SerpApi<\/button>/);
-	assert.match(page, /provider === "serpapi"\) return "SerpApi"/);
 });

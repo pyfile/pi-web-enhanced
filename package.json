@@ -1,7 +1,7 @@
 {
-  "name": "pi-web-access",
+  "name": "pi-web-enhanced",
   "version": "0.35.0",
-  "description": "Web search, URL fetching, GitHub repo cloning, PDF extraction, YouTube video understanding, and local video analysis for Pi coding agent. Supports OpenAI, Brave, Parallel, TinyFish, Search1API, Searchinfinity, Querit, Tavily, Firecrawl, Crawl4AI, Jina, SERPdive, Kagi, Ollama, AnySearch, Bright Data SERP, SerpBase, SerpApi, Serply, You.com, SearXNG, Exa, Perplexity, Gemini, Kimi, and Mistral.",
+  "description": "Web search, URL fetching, GitHub repo cloning, and local PDF extraction for Pi coding agent. Supports Exa, Tavily, AnySearch, TinyFish, SerpApi, Firecrawl, Brave, and DuckDuckGo, with weighted-provider balanced search and all-provider enhanced search.",
   "type": "module",
   "scripts": {
     "test": "node --import ./test/isolate-env.mjs --test",
@@ -18,11 +18,14 @@
     "pi-coding-agent",
     "extension",
     "web-search",
+    "exa",
+    "tavily",
+    "anysearch",
     "tinyfish",
-    "search1api",
-    "searchinfinity",
-    "querit",
-    "perplexity",
+    "serpapi",
+    "firecrawl",
+    "brave",
+    "duckduckgo",
     "fetch",
     "scraping"
   ],
@@ -41,8 +44,7 @@
     "*.ts",
     "CHANGELOG.md",
     "SECURITY.md",
-    "banner.png",
-    "pi-web-fetch-demo.mp4"
+    "banner.png"
   ],
   "devDependencies": {
     "@earendil-works/pi-ai": "0.86.1",
@@ -61,7 +63,6 @@
     "p-limit": "^6.1.0",
     "promise.try": "^2.0.1",
     "turndown": "^7.2.0",
-    "undici": "^8.11.2",
     "unpdf": "^1.6.2"
   },
   "peerDependencies": {
@@ -73,7 +74,6 @@
   "pi": {
     "extensions": [
       "./index.ts"
-    ],
-    "video": "https://github.com/nicobailon/pi-web-access/raw/refs/heads/main/pi-web-fetch-demo.mp4"
+    ]
   }
 }

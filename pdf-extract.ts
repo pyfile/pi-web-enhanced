@@ -1,27 +1,14 @@
 /**
  * PDF Content Extractor
  *
- * Converts PDFs to Markdown. The `auto` provider chain runs Datalab
- * (deterministic, layout-aware) first, then Gemini API, with unpdf as the
- * deterministic local fallback; the chain can also be pinned with
- * `pdf.provider`.
+ * Converts PDFs to Markdown locally with unpdf. No hosted conversion service
+ * is used, so PDF bytes never leave the machine.
  */
 
 import { existsSync, readFileSync } from "node:fs";
 import { writeFile, mkdir } from "node:fs/promises";
 import { join, basename } from "node:path";
 import { tmpdir } from "node:os";
-import { CredentialResolutionError } from "./credential-source.ts";
-import {
-	DATALAB_MODE_VALUES,
-	DEFAULT_DATALAB_TIMEOUT_MS,
-	isDatalabApiAvailable,
-	normalizeDatalabMode,
-	extractPDFViaDatalab,
-	type DatalabMode,
-} from "./datalab-pdf-extract.ts";
-import { isGeminiApiAvailable } from "./gemini-api.ts";
-import { extractPDFViaGemini } from "./gemini-pdf-extract.ts";
 import { getWebSearchConfigPath } from "./utils.ts";
 
 export interface PDFExtractResult {
@@ -38,30 +25,16 @@ export interface PDFExtractOptions {
 	outputDir?: string;
 	filename?: string;
 	signal?: AbortSignal;
-	geminiTimeoutMs?: number;
 }
-
-export type PDFProvider = "auto" | "gemini" | "datalab" | "unpdf";
-
-export const PDF_PROVIDER_VALUES = new Set<PDFProvider>([
-	"auto",
-	"gemini",
-	"datalab",
-	"unpdf",
-]);
 
 export interface PDFConfig {
 	enabled: boolean;
 	maxSizeMB: number;
 	maxPages: number;
-	provider: PDFProvider;
-	datalabMode: DatalabMode;
-	datalabTimeoutMs: number;
 }
 
 export const DEFAULT_PDF_MAX_SIZE_MB = 20;
 export const MAX_PDF_MAX_SIZE_MB = 50;
-export const MAX_DATALAB_TIMEOUT_MS = 300_000;
 const DEFAULT_MAX_PAGES = 100;
 const DEFAULT_OUTPUT_DIR = join(tmpdir(), "pi-web-pdf");
 const CONFIG_PATH = getWebSearchConfigPath();
@@ -73,9 +46,6 @@ export function loadPDFConfig(): PDFConfig {
 			enabled: true,
 			maxSizeMB: DEFAULT_PDF_MAX_SIZE_MB,
 			maxPages: DEFAULT_MAX_PAGES,
-			provider: "auto",
-			datalabMode: normalizeDatalabMode(process.env.DATALAB_MODE),
-			datalabTimeoutMs: DEFAULT_DATALAB_TIMEOUT_MS,
 		};
 	}
 
@@ -110,31 +80,10 @@ export function loadPDFConfig(): PDFConfig {
 			? Math.max(1, Math.floor(configuredMaxPages))
 			: DEFAULT_MAX_PAGES;
 
-	const provider =
-		typeof pdf.provider === "string" &&
-		PDF_PROVIDER_VALUES.has(pdf.provider as PDFProvider)
-			? (pdf.provider as PDFProvider)
-			: "auto";
-	const datalabMode =
-		typeof pdf.datalabMode === "string" &&
-		DATALAB_MODE_VALUES.has(pdf.datalabMode as DatalabMode)
-			? (pdf.datalabMode as DatalabMode)
-			: normalizeDatalabMode(process.env.DATALAB_MODE);
-	const configuredTimeout = pdf.datalabTimeoutMs;
-	const datalabTimeoutMs =
-		typeof configuredTimeout === "number" &&
-		Number.isFinite(configuredTimeout) &&
-		configuredTimeout > 0
-			? Math.min(configuredTimeout, MAX_DATALAB_TIMEOUT_MS)
-			: DEFAULT_DATALAB_TIMEOUT_MS;
-
 	return {
 		enabled,
 		maxSizeMB: normalized,
 		maxPages,
-		provider,
-		datalabMode,
-		datalabTimeoutMs,
 	};
 }
 
@@ -171,7 +120,6 @@ export async function extractPDFToMarkdown(
 		outputDir = DEFAULT_OUTPUT_DIR,
 		filename,
 		signal,
-		geminiTimeoutMs,
 	} = options;
 
 	const pdfConfig = loadPDFConfig();
@@ -182,56 +130,8 @@ export async function extractPDFToMarkdown(
 				? Math.max(1, Math.floor(maxPages))
 				: DEFAULT_MAX_PAGES;
 	const urlTitle = extractTitleFromURL(url);
-	const provider = pdfConfig.provider;
-
-	if (provider === "auto" || provider === "datalab") {
-		try {
-			if (isDatalabApiAvailable()) {
-				const result = await extractPDFViaDatalab(buffer, {
-					maxPages: safeMaxPages,
-					title: urlTitle,
-					mode: pdfConfig.datalabMode,
-					timeoutMs: pdfConfig.datalabTimeoutMs,
-					...(signal ? { signal } : {}),
-				});
-				return writeMarkdownResult({
-					markdownBody: result.markdown,
-					title: urlTitle,
-					pages: result.pages,
-					outputDir,
-					filename,
-					url,
-				});
-			}
-		} catch (err) {
-			if (shouldRethrowExtractionError(err, signal)) throw err;
-		}
-	}
-
-	if (provider === "auto" || provider === "gemini") {
-		try {
-			if (isGeminiApiAvailable()) {
-				const markdownBody = await extractPDFViaGemini(buffer, {
-					maxPages: safeMaxPages,
-					title: urlTitle,
-					...(signal ? { signal } : {}),
-					...(geminiTimeoutMs !== undefined
-						? { timeoutMs: geminiTimeoutMs }
-						: {}),
-				});
-				return writeMarkdownResult({
-					markdownBody,
-					title: urlTitle,
-					pages: countPageMarkers(markdownBody),
-					outputDir,
-					filename,
-					url,
-				});
-			}
-		} catch (err) {
-			if (shouldRethrowExtractionError(err, signal)) throw err;
-		}
-	}
+	// Local parsing is fast but not instant; honour a caller that already gave up.
+	if (signal?.aborted) throw new Error("Aborted");
 
 	const { getDocumentProxy, VerbosityLevel } = await getUnpdf();
 	const pdf = await getDocumentProxy(new Uint8Array(buffer), {
@@ -342,19 +242,6 @@ async function writeMarkdownResult(options: {
 	};
 }
 
-function countPageMarkers(markdown: string): number {
-	return [...markdown.matchAll(PAGE_MARKER_PATTERN)].length;
-}
-
-function shouldRethrowExtractionError(
-	err: unknown,
-	signal?: AbortSignal,
-): boolean {
-	if (signal?.aborted) return true;
-	if (err instanceof CredentialResolutionError) return true;
-	const message = err instanceof Error ? err.message : String(err);
-	return message.startsWith("Failed to parse ");
-}
 
 /**
  * Extract a reasonable title from URL

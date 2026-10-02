@@ -7,11 +7,9 @@ import { join } from "node:path";
 import { test } from "node:test";
 
 const braveModuleUrl = new URL("../brave.ts", import.meta.url).href;
-const geminiApiModuleUrl = new URL("../gemini-api.ts", import.meta.url).href;
-const openaiModuleUrl = new URL("../openai-search.ts", import.meta.url).href;
-const parallelModuleUrl = new URL("../parallel.ts", import.meta.url).href;
+const anysearchModuleUrl = new URL("../anysearch.ts", import.meta.url).href;
+const serpapiModuleUrl = new URL("../serpapi.ts", import.meta.url).href;
 const tinyfishModuleUrl = new URL("../tinyfish.ts", import.meta.url).href;
-const perplexityModuleUrl = new URL("../perplexity.ts", import.meta.url).href;
 const tavilyModuleUrl = new URL("../tavily.ts", import.meta.url).href;
 
 async function createHome(config) {
@@ -50,18 +48,18 @@ function runChild(script, env) {
 	});
 }
 
-test("previously unsupported providers resolve explicit env and command sources lazily", async () => {
-	const tavilyMarker = join(await mkdtemp(join(tmpdir(), "pi-web-access-credential-marker-")), "tavily-ran");
-	const openaiMarker = join(await mkdtemp(join(tmpdir(), "pi-web-access-credential-marker-")), "openai-ran");
+test("configured providers resolve explicit env and command sources lazily", async () => {
+	const tavilyMarker = join(await mkdtemp(join(tmpdir(), "pi-web-enhanced-credential-marker-")), "tavily-ran");
+	const tinyfishMarker = join(await mkdtemp(join(tmpdir(), "pi-web-enhanced-credential-marker-")), "tinyfish-ran");
 	const { home, agentDir } = await createHome({
 		braveApiKey: "${BRAVE_SCOPED_KEY}",
-		openaiApiKey: `!touch ${openaiMarker} && printf openai-command-key`,
+		tinyfishApiKey: `!touch ${tinyfishMarker} && printf tinyfish-command-key`,
 		tavilyApiKey: `!touch ${tavilyMarker} && printf tavily-command-key`,
 	});
 	const child = runChild(`
 		import { existsSync } from "node:fs";
 		const { isBraveAvailable, searchWithBrave } = await import(${JSON.stringify(braveModuleUrl)});
-		const { isOpenAISearchAvailable, searchWithOpenAI } = await import(${JSON.stringify(openaiModuleUrl)});
+		const { isTinyFishAvailable, searchWithTinyFish } = await import(${JSON.stringify(tinyfishModuleUrl)});
 		const { isTavilyAvailable, searchWithTavily } = await import(${JSON.stringify(tavilyModuleUrl)});
 		const calls = [];
 		globalThis.fetch = async (url, init = {}) => {
@@ -70,30 +68,25 @@ test("previously unsupported providers resolve explicit env and command sources 
 		};
 		const availableBefore = {
 			brave: isBraveAvailable(),
-			openai: await isOpenAISearchAvailable(),
+			tinyfish: isTinyFishAvailable(),
 			tavily: isTavilyAvailable(),
-			openaiMarker: existsSync(${JSON.stringify(openaiMarker)}),
+			tinyfishMarker: existsSync(${JSON.stringify(tinyfishMarker)}),
 			tavilyMarker: existsSync(${JSON.stringify(tavilyMarker)}),
 		};
 		await searchWithBrave("brave", { numResults: 1 });
 		globalThis.fetch = async (url, init = {}) => {
 			calls.push({ url: String(url), headers: Object.fromEntries(new Headers(init.headers)) });
-			return new Response(JSON.stringify({
-				output: [
-					{ type: "web_search_call", action: { sources: [] } },
-					{ type: "message", content: [{ type: "output_text", text: "OpenAI answer" }] },
-				],
-			}), { status: 200 });
+			return new Response(JSON.stringify({ results: [{ url: "https://example.com/tinyfish", final_url: "https://example.com/tinyfish", title: "TinyFish", text: "# TinyFish", format: "markdown" }], errors: [] }), { status: 200 });
 		};
-		await searchWithOpenAI("openai", { numResults: 1 });
+		await searchWithTinyFish("tinyfish", { numResults: 1 });
 		globalThis.fetch = async (url, init = {}) => {
 			calls.push({ url: String(url), headers: Object.fromEntries(new Headers(init.headers)) });
-			return new Response(JSON.stringify({ results: [{ title: "Tavily", url: "https://example.com/tavily", content: "result" }] }), { status: 200 });
+			return new Response(JSON.stringify({ answer: "", results: [{ title: "Tavily", url: "https://example.com/tavily", content: "result" }] }), { status: 200 });
 		};
 		await searchWithTavily("tavily", { numResults: 1 });
 		console.log(JSON.stringify({
 			availableBefore,
-			openaiMarkerAfter: existsSync(${JSON.stringify(openaiMarker)}),
+			tinyfishMarkerAfter: existsSync(${JSON.stringify(tinyfishMarker)}),
 			tavilyMarkerAfter: existsSync(${JSON.stringify(tavilyMarker)}),
 			calls,
 		}));
@@ -108,15 +101,15 @@ test("previously unsupported providers resolve explicit env and command sources 
 	const output = JSON.parse(child.stdout.trim());
 	assert.deepEqual(output.availableBefore, {
 		brave: true,
-		openai: true,
+		tinyfish: true,
 		tavily: true,
-		openaiMarker: false,
+		tinyfishMarker: false,
 		tavilyMarker: false,
 	});
-	assert.equal(output.openaiMarkerAfter, true);
+	assert.equal(output.tinyfishMarkerAfter, true);
 	assert.equal(output.tavilyMarkerAfter, true);
 	assert.equal(output.calls[0].headers["x-subscription-token"], "brave-scoped-key");
-	assert.equal(output.calls[1].headers.authorization, "Bearer openai-command-key");
+	assert.equal(output.calls[1].headers["x-api-key"], "tinyfish-command-key");
 	assert.equal(output.calls[2].headers.authorization, "Bearer tavily-command-key");
 });
 
@@ -157,32 +150,25 @@ test("provider requests can resolve credentials through an inherited 1Password s
 test("provider API errors redact resolved credential-source values", async () => {
 	const { home, agentDir } = await createHome({
 		braveApiKey: "${BRAVE_SCOPED_KEY}",
-		cloudflareApiKey: "${CLOUDFLARE_SCOPED_KEY}",
-		geminiBaseUrl: "https://gateway.ai.cloudflare.com/v1/account/gateway/google-ai-studio",
-		openaiApiKey: "!printf openai-redaction-secret",
-		parallelApiKey: "!printf parallel-redaction-secret",
+		anysearchApiKey: "!printf anysearch-redaction-secret",
+		serpapiApiKey: "!printf serpapi-redaction-secret",
 		tinyfishApiKey: "!printf tinyfish-redaction-secret",
-		perplexityApiKey: "!printf perplexity-redaction-secret",
 		tavilyApiKey: "!printf tavily-redaction-secret",
 	});
 	const child = runChild(`
 		const modules = {
 			brave: await import(${JSON.stringify(braveModuleUrl)}),
-			geminiApi: await import(${JSON.stringify(geminiApiModuleUrl)}),
-			openai: await import(${JSON.stringify(openaiModuleUrl)}),
-			parallel: await import(${JSON.stringify(parallelModuleUrl)}),
+			anysearch: await import(${JSON.stringify(anysearchModuleUrl)}),
+			serpapi: await import(${JSON.stringify(serpapiModuleUrl)}),
 			tinyfish: await import(${JSON.stringify(tinyfishModuleUrl)}),
-			perplexity: await import(${JSON.stringify(perplexityModuleUrl)}),
 			tavily: await import(${JSON.stringify(tavilyModuleUrl)}),
 		};
 		const attempts = [
 			["brave", "brave-redaction-secret", () => modules.brave.searchWithBrave("query")],
-			["openai", "openai-redaction-secret", () => modules.openai.searchWithOpenAI("query")],
-			["parallel", "parallel-redaction-secret", () => modules.parallel.searchWithParallel("query")],
+			["anysearch", "anysearch-redaction-secret", () => modules.anysearch.searchWithAnySearch("query")],
+			["serpapi", "serpapi-redaction-secret", () => modules.serpapi.searchWithSerpApi("query")],
 			["tinyfish", "tinyfish-redaction-secret", () => modules.tinyfish.searchWithTinyFish("query")],
-			["perplexity", "perplexity-redaction-secret", () => modules.perplexity.searchWithPerplexity("query")],
 			["tavily", "tavily-redaction-secret", () => modules.tavily.searchWithTavily("query")],
-			["cloudflare", "cf-redaction-secret", () => modules.geminiApi.queryGeminiApiWithVideo("prompt", "files/synthetic")],
 		];
 		const messages = {};
 		for (const [name, secret, run] of attempts) {
@@ -200,7 +186,6 @@ test("provider API errors redact resolved credential-source values", async () =>
 		USERPROFILE: home,
 		PI_CODING_AGENT_DIR: agentDir,
 		BRAVE_SCOPED_KEY: "brave-redaction-secret",
-		CLOUDFLARE_SCOPED_KEY: "cf-redaction-secret",
 	});
 
 	assert.equal(child.status, 0, child.stderr);
@@ -210,48 +195,4 @@ test("provider API errors redact resolved credential-source values", async () =>
 		assert.match(message, /\[redacted\]/, provider);
 		assert.equal(message.includes(output.secrets[provider]), false, provider);
 	}
-});
-
-test("Cloudflare gateway response redacts the credential used by the request", async () => {
-	const root = await mkdtemp(join(tmpdir(), "pi-web-access-cloudflare-redaction-"));
-	const countPath = join(root, "count");
-	const resolverPath = join(root, "cloudflare-key.mjs");
-	await writeFile(resolverPath, `
-		import { existsSync, readFileSync, writeFileSync } from "node:fs";
-		const countPath = ${JSON.stringify(countPath)};
-		const current = existsSync(countPath) ? Number(readFileSync(countPath, "utf8")) : 0;
-		const next = current + 1;
-		writeFileSync(countPath, String(next));
-		process.stdout.write("cf-rotating-secret-" + next);
-	`, "utf8");
-	const { home, agentDir } = await createHome({
-		cloudflareApiKey: `!${JSON.stringify(process.execPath)} ${JSON.stringify(resolverPath)}`,
-		geminiBaseUrl: "https://gateway.ai.cloudflare.com/v1/account/gateway/google-ai-studio",
-	});
-	const child = runChild(`
-		import { readFileSync } from "node:fs";
-		const { queryGeminiApiWithVideo } = await import(${JSON.stringify(geminiApiModuleUrl)});
-		let leaked = false;
-		let redacted = false;
-		globalThis.fetch = async (url, init = {}) => {
-			const sent = new Headers(init.headers).get("cf-aig-authorization")?.replace(/^Bearer /, "") ?? "missing";
-			return new Response(JSON.stringify({ error: sent }), { status: 400 });
-		};
-		try {
-			await queryGeminiApiWithVideo("prompt", "files/synthetic");
-		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
-			leaked = message.includes("cf-rotating-secret-1");
-			redacted = message.includes("[redacted]");
-		}
-		console.log(JSON.stringify({ leaked, redacted, count: readFileSync(${JSON.stringify(countPath)}, "utf8") }));
-	`, {
-		HOME: home,
-		USERPROFILE: home,
-		PI_CODING_AGENT_DIR: agentDir,
-	});
-
-	assert.equal(child.status, 0, child.stderr);
-	const output = JSON.parse(child.stdout.trim());
-	assert.deepEqual(output, { leaked: false, redacted: true, count: "1" });
 });

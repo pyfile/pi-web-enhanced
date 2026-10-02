@@ -1,8 +1,37 @@
-# Pi Web Access - Changelog
+# Pi Web Enhanced - Changelog
 
 All notable changes to this project will be documented in this file.
 
+This project is a trimmed fork of [pi-web-access](https://github.com/nicobailon/pi-web-access).
+Entries below 0.35.0 describe upstream history; the `[Unreleased]` section describes
+what this fork changed.
+
 ## [Unreleased]
+
+### Added
+
+- `web_search_enhanced`, a second search tool that queries every provider in the configured provider list at once and merges the deduplicated results.
+- Weighted provider selection for `web_search`: set `"provider": [["exa", 3], ["brave", 2], ["tavily", 1]]` and each call samples one provider with probability `exp(wᵢ) / Σ exp(wⱼ)`. Providers without credentials are dropped before sampling, weights are clamped to ±50, and duplicates, unknown names, or non-integer weights are rejected with a config-path error.
+
+### Changed
+
+- Search providers are now limited to Exa, Tavily, AnySearch, TinyFish, SerpApi, Firecrawl, Brave, and DuckDuckGo. AnySearch, SerpApi, and DuckDuckGo remain explicit-only. The automatic chain is Exa → Brave → Tavily → Firecrawl → TinyFish.
+- `fetch_content` providers are now `http`, `firecrawl`, `tinyfish`, and `querit`.
+- PDF extraction is local `unpdf` only; the Datalab and Gemini PDF engines are gone, so `pdf.provider`, `pdf.datalabMode`, and `pdf.datalabTimeoutMs` no longer exist.
+- The package is named `pi-web-enhanced` and depends on `undici` no longer.
+
+### Removed
+
+- The `summary-review` and `auto-summary` workflows, the whole curator subsystem (`/websearch`, `/curator`, the curate shortcut, `curator-server.ts`, `curator-page.ts`, `curator-run.ts`), and generated summaries. `web_search` has no `workflow` parameter.
+- YouTube, local video, and frame extraction. `fetch_content` no longer accepts `timestamp`, `frames`, or `model`.
+- The `/google-account` command.
+- All removed search and fetch providers, and the Gemini search/fetch/PDF integrations.
+
+### Migration
+
+An existing `web-search.json` that names a removed provider now fails loudly at search time with a message naming the file and the offending provider. Update `provider`, `searchProvider`, `searchRouting.providers`, and `webSearch.allowedProviders` to use the eight supported providers.
+
+## [0.35.0]
 
 ### Fixed
 

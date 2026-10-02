@@ -73,9 +73,9 @@ function buildChildScript(moduleUrl) {
 		initializeExtension(pi);
 		assert.deepEqual(
 			tools.map((tool) => tool.name),
-			["web_search", "source_check", "fetch_content", "get_search_content", "web_enable"],
+			["web_search", "web_search_enhanced", "source_check", "fetch_content", "get_search_content", "web_enable"],
 		);
-		assert.ok(commands.includes("websearch"), "websearch command was not registered");
+		assert.ok(commands.includes("search"), "search command was not registered");
 		assert.ok(shortcuts.length > 0, "shortcuts were not registered");
 		assert.ok(events.includes("session_start"), "session handlers were not registered");
 		assert.equal(existsSync(markerPath), false, "extract.ts loaded during registration");

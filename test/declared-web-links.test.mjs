@@ -16,7 +16,7 @@ function runChild(script) {
 	const home = mkdtempSync(join(tmpdir(), "pi-web-access-declared-links-"));
 	writeFileSync(
 		join(home, "web-search.json"),
-		JSON.stringify({ fetchRouting: { allowRemoteHostedProviders: true } }) +
+		JSON.stringify({ fetchRouting: { allowRemoteHostedProviders: true }, tinyfishApiKey: "tinyfish-test-key" }) +
 			"\n",
 		"utf8",
 	);
@@ -36,6 +36,7 @@ function runChild(script) {
 		"TINYFISH_API_KEY",
 		"FIRECRAWL_BASE_URL",
 		"FIRECRAWL_API_KEY",
+		"QUERIT_API_KEY",
 		"PI_ALLOW_BROWSER_COOKIES",
 	])
 		delete childEnv[key];
@@ -145,11 +146,15 @@ test("HTML extraction surfaces declared documentation links without broad URL he
 			},
 		};
 		let calls = [];
-		globalThis.fetch = async (input) => {
+		globalThis.fetch = async (input, init) => {
 			const url = String(input);
 			calls.push(url);
-			if (url === "https://r.jina.ai/https://example.com/fallback") {
-				return new Response("Title: Rendered API\\nMarkdown Content:\\n# Rendered API\\n\\n" + article, { status: 200 });
+			if (url === "https://api.fetch.tinyfish.ai") {
+				const target = JSON.parse(String(init?.body ?? "{}")).urls?.[0];
+				if (target === "https://example.com/fallback") {
+					return new Response(JSON.stringify({ results: [{ url: target, final_url: target, title: "Rendered API", text: "# Rendered API\\n\\n" + article, format: "markdown" }], errors: [] }), { status: 200 });
+				}
+				return new Response(JSON.stringify({ results: [], errors: [{ url: target, error: "not_rendered", status: 404 }] }), { status: 200 });
 			}
 			const fixture = fixtures[url];
 			if (!fixture) return new Response("not available", { status: 404, statusText: "Not Found" });
@@ -189,7 +194,7 @@ test("HTML extraction surfaces declared documentation links without broad URL he
 	assert.match(output.shell.content, /https:\/\/example\.com\/docs/);
 	assert.deepEqual(output.shellCalls, [
 		"https://example.com/shell",
-		"https://r.jina.ai/https://example.com/shell",
+		"https://api.fetch.tinyfish.ai",
 	]);
 
 	assert.equal(output.fallback.error, null);
@@ -201,7 +206,7 @@ test("HTML extraction surfaces declared documentation links without broad URL he
 	);
 	assert.deepEqual(output.fallbackCalls, [
 		"https://example.com/fallback",
-		"https://r.jina.ai/https://example.com/fallback",
+		"https://api.fetch.tinyfish.ai",
 	]);
 
 	assert.doesNotMatch(

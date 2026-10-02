@@ -58,7 +58,7 @@ function run(config = {}, options = {}) {
 	return JSON.parse(child.stdout);
 }
 
-const defaultNames = ["web_search", "source_check", "fetch_content", "get_search_content"];
+const defaultNames = ["web_search", "web_search_enhanced", "source_check", "fetch_content", "get_search_content"];
 
 test("fresh sessions expose compact configured guidance and keep web tools registered but dormant", () => {
 	const state = run();
@@ -73,8 +73,8 @@ test("fresh sessions expose compact configured guidance and keep web tools regis
 });
 
 test("activation enables every configured name once without removing unrelated tools", () => {
-	const names = ["research_web", "verify_sources", "grab_content", "open_content"];
-	const state = run({ toolNames: { webSearch: names[0], sourceCheck: names[1], fetchContent: names[2], getSearchContent: names[3] } }, { activate: true, secondActivation: true });
+	const names = ["research_web", "research_web_deep", "verify_sources", "grab_content", "open_content"];
+	const state = run({ toolNames: { webSearch: names[0], webSearchEnhanced: names[1], sourceCheck: names[2], fetchContent: names[3], getSearchContent: names[4] } }, { activate: true, secondActivation: true });
 	assert.deepEqual(state.before, ["read", "foreign_tool", "web_enable"]);
 	assert.deepEqual(state.after, ["read", "foreign_tool", "web_enable", ...names]);
 	assert.equal(state.result.isError, undefined);
@@ -89,7 +89,7 @@ test("disabled capabilities are neither registered nor advertised", () => {
 });
 
 test("all-disabled configuration registers no loader", () => {
-	const disabled = Object.fromEntries(["webSearch", "sourceCheck", "fetchContent", "getSearchContent"].map(key => [key, { enabled: false }]));
+	const disabled = Object.fromEntries(["webSearch", "webSearchEnhanced", "sourceCheck", "fetchContent", "getSearchContent"].map(key => [key, { enabled: false }]));
 	const state = run({ tools: disabled });
 	assert.deepEqual(state.registered, []);
 	assert.deepEqual(state.before, ["read", "foreign_tool"]);
