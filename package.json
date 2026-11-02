@@ -1,6 +1,6 @@
 {
   "name": "pi-web-enhanced",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Web search, URL fetching, GitHub repo cloning, and local PDF extraction for Pi coding agent. Supports Exa, Tavily, AnySearch, TinyFish, SerpApi, Firecrawl, Brave, Querit, and DuckDuckGo, with weighted-provider balanced search and all-provider enhanced search.",
   "type": "module",
   "scripts": {
@@ -8,9 +8,10 @@
     "typecheck": "tsc",
     "audit:runtime": "npm audit --omit=dev --omit=peer",
     "build": "node scripts/build.js",
-    "prepublishOnly": "npm run build && node scripts/pi-extensions-dist.js dist",
+    "prepublishOnly": "node scripts/check-changelog.js && npm run build && node scripts/pi-extensions-dist.js dist",
     "postpublish": "node scripts/pi-extensions-dist.js index.ts",
-    "release": "node scripts/publish.js"
+    "release": "node scripts/publish.js",
+    "check:changelog": "node scripts/check-changelog.js"
   },
   "keywords": [
     "pi-package",
